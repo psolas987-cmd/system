@@ -1284,6 +1284,8 @@ function closeLvOverlay(){
 
 // ─── XP / Leveling ────────────────────────────────────────────────────────────
 function addXp(n){
+  S.level = 7; S.totalXp = 685; S.currentXp = 85; S.gold = 102; S.streak = 6;
+save(); render(); 
   S.totalXp+=n;S.currentXp+=n;
   while(S.currentXp>=XPN(S.level)){
     S.currentXp-=XPN(S.level);S.level++;S.ap+=5;
