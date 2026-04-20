@@ -29,7 +29,44 @@ const app=initializeApp(firebaseConfig);
 const auth=getAuth(app);
 const db=getFirestore(app);
 const provider=new GoogleAuthProvider();
-
+// --- START RECOVERY BLOCK ---
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    const recoveryState = {
+      lvl: 7,
+      totalXp: 685,
+      gold: 102,
+      streak: 6,
+      bestStreak: 6,
+      bestDayXp: 195,
+      workoutSessions: 5,
+      studySessions: 5,
+      daysCleared: 6,
+      points: 0,
+      stats: { str: 15, vit: 12, agi: 14, int: 10, perc: 11 },
+      history: [
+        { txt: "System Initialized", date: "6 days ago", type: "system" },
+        { txt: "Workout & Study Session Completed", date: "5 days ago", type: "quest" },
+        { txt: "Best Day XP: 195 Achieved", date: "3 days ago", type: "achievement" },
+        { txt: "Reached Level 6", date: "Yesterday", type: "level" },
+        { txt: "Current Rank: Level 7 reached", date: "Today", type: "level" }
+      ],
+      lastDate: new Date().toLocaleDateString(),
+      _savedAt: Date.now(),
+      quests: [],
+      customQuests: []
+    };
+    
+    // Ενημερώνει τη βάση και το κινητό σου
+    await setDoc(doc(db, 'hunters', user.uid), {
+      state: JSON.stringify(recoveryState),
+      updatedAt: serverTimestamp()
+    });
+    localStorage.setItem('sl_v5', JSON.stringify(recoveryState));
+    console.log("RECOVERY SUCCESSFUL");
+  }
+});
+// --- END RECOVERY BLOCK ---
 let currentUser=null;
 let unsub=null;
 let _ignoreNextSnapshot=false;
