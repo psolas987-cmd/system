@@ -1,0 +1,2109 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#04040d">
+<link rel="manifest" href="manifest.json">
+<title>System — Arise</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<!-- ═══ FIREBASE ═══ Replace the firebaseConfig below with your own config ═══ -->
+<script type="module">
+import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import{getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import{getFirestore,doc,setDoc,onSnapshot,serverTimestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const firebaseConfig={
+  apiKey:"AIzaSyCFHw5oU5mXvXDo5hot47yfB3fu_p87EWM",
+  authDomain:"system-d6922.firebaseapp.com",
+  projectId:"system-d6922",
+  storageBucket:"system-d6922.firebasestorage.app",
+  messagingSenderId:"319147692601",
+  appId:"1:319147692601:web:3e2aa5e4a2439e2ec033e8"
+};
+
+const app=initializeApp(firebaseConfig);
+const auth=getAuth(app);
+const db=getFirestore(app);
+const provider=new GoogleAuthProvider();
+
+let currentUser=null;
+let unsub=null;
+let _ignoreNextSnapshot=false;
+
+// expose to global scope
+window._fbSignIn=async()=>{
+  try{
+    await signInWithPopup(auth,provider);
+  }catch(e){
+    window.toast&&window.toast('<span style="color:var(--red)">Login failed: '+e.message+'</span>');
+  }
+};
+window._fbSignOut=async()=>{
+  if(unsub){unsub();unsub=null;}
+  await signOut(auth);
+  currentUser=null;
+  window._updateSyncUI&&window._updateSyncUI(null);
+  window.toast&&window.toast('Signed out. Using local storage only.');
+};
+window._fbSave=async(state)=>{
+  if(!currentUser)return;
+  try{
+    _ignoreNextSnapshot=true;
+    await setDoc(doc(db,'hunters',currentUser.uid),{state:JSON.stringify(state),updatedAt:serverTimestamp()});
+  }catch(e){console.warn('FB save error',e);}
+};
+
+onAuthStateChanged(auth,async user=>{
+  currentUser=user;
+  if(unsub){unsub();unsub=null;}
+  if(user){
+    window._updateSyncUI&&window._updateSyncUI(user);
+    // Listen for real-time changes
+    unsub=onSnapshot(doc(db,'hunters',user.uid),snap=>{
+      if(_ignoreNextSnapshot){_ignoreNextSnapshot=false;return;}
+      if(snap.exists()){
+        try{
+          const remote=JSON.parse(snap.data().state);
+          const remoteTs=snap.data().updatedAt?.toMillis?.()||0;
+          const localTs=window.S._savedAt||0;
+          // Use timestamp if available, fall back to totalXp comparison
+          const remoteIsNewer=remoteTs>0?remoteTs>localTs:(remote.totalXp||0)>=(window.S.totalXp||0);
+          if(remoteIsNewer){
+            Object.assign(window.S,remote);
+            try{localStorage.setItem('sl_v5',JSON.stringify(window.S));}catch(e){}
+            window.render&&window.render();
+            window.toast&&window.toast('☁️ <span class="txp">Synced</span> from cloud.');
+          }
+        }catch(e){}
+      }else{
+        // No cloud data yet — push local
+        window._fbSave&&window._fbSave(window.S);
+      }
+    });
+  }else{
+    window._updateSyncUI&&window._updateSyncUI(null);
+  }
+});
+</script>
+<style>
+:root{
+  --void:#04040d;--panel:#090918;--panel2:#0d0d24;
+  --border:rgba(83,74,183,0.18);--border2:rgba(83,74,183,0.45);
+  --purple:#534AB7;--pl:#7F77DD;--pd:#AFA9EC;
+  --teal:#1D9E75;--tl:#5DCAA5;
+  --red:#E24B4A;--amber:#EF9F27;
+  --text:#e8e6ff;--t2:#8b89b8;--t3:#3e3c60;
+}
+.theme-red{
+  --void:#0d0404;--panel:#180909;--panel2:#240d0d;
+  --border:rgba(183,74,74,0.18);--border2:rgba(183,74,74,0.45);
+  --purple:#B74A4A;--pl:#DD7777;--pd:#ECA9A9;
+  --teal:#9E1D1D;--tl:#CA5D5D;
+  --text:#ffe6e6;--t2:#b88989;--t3:#603c3c;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;}
+html,body{height:100%;background:#000;overflow:hidden;}
+body{font-family:'Rajdhani',sans-serif;color:var(--text);}
+
+#bg{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;background:var(--void);}
+.p{position:absolute;width:1px;background:var(--purple);animation:rise linear infinite;}
+@keyframes rise{0%{transform:translateY(100vh);opacity:0}8%{opacity:.45}92%{opacity:.15}100%{transform:translateY(-5vh);opacity:0}}
+.scanline{position:fixed;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(83,74,183,.3),transparent);animation:scan 6s linear infinite;pointer-events:none;z-index:1;}
+@keyframes scan{0%{top:0}100%{top:100vh}}
+
+.app{position:relative;z-index:2;display:flex;flex-direction:column;height:100vh;height:100dvh;max-width:430px;margin:0 auto;width:100%;}
+
+.sbar{background:#020209;padding:calc(env(safe-area-inset-top,0px) + 10px) 20px 8px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
+.sbar-t{font-family:'Share Tech Mono';font-size:13px;color:var(--pd);}
+.sbar-i{display:flex;gap:6px;align-items:center;}
+.sig{display:flex;align-items:flex-end;gap:1.5px;}
+.sig span{background:var(--t2);border-radius:1px;width:3px;}
+.sig span:nth-child(1){height:4px}.sig span:nth-child(2){height:7px}.sig span:nth-child(3){height:10px}
+.bat{width:20px;height:10px;border:1px solid var(--t2);border-radius:2px;padding:1.5px;position:relative;}
+.bat::after{content:'';position:absolute;right:-4px;top:50%;transform:translateY(-50%);width:3px;height:5px;background:var(--t2);border-radius:0 1px 1px 0;}
+.bat-f{height:100%;width:70%;background:var(--teal);border-radius:1px;}
+
+/* Daily quote banner */
+.sys-quote{background:linear-gradient(90deg,rgba(83,74,183,.08),transparent);border-left:2px solid var(--purple);padding:7px 14px;font-family:'Share Tech Mono';font-size:10px;color:var(--pd);font-style:italic;flex-shrink:0;line-height:1.4;cursor:pointer;transition:opacity .2s;}
+.sys-quote:active{opacity:.7;}
+
+.hdr{background:linear-gradient(180deg,#020210,#05051a);padding:11px 18px 10px;flex-shrink:0;border-bottom:0.5px solid var(--border2);position:relative;}
+.hdr::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(83,74,183,.5),transparent);}
+.hdr-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;}
+.sys-lbl{font-family:'Orbitron';font-size:8px;letter-spacing:3px;color:var(--t3);margin-bottom:2px;}
+.player-n{font-family:'Orbitron';font-size:18px;font-weight:900;color:var(--text);letter-spacing:.5px;}
+/* Active title under name */
+.player-title{font-size:10px;color:var(--amber);font-family:'Share Tech Mono';margin-top:1px;min-height:14px;}
+.rank-box{background:rgba(83,74,183,.12);border:0.5px solid var(--border2);border-radius:6px;padding:5px 12px;text-align:center;min-width:52px;}
+.rank-l{font-family:'Orbitron';font-size:22px;font-weight:900;line-height:1;transition:color .3s;}
+.rank-lb{font-size:9px;color:var(--t3);letter-spacing:1px;margin-top:1px;}
+.lv-row{display:flex;align-items:baseline;gap:7px;margin-bottom:4px;}
+.lv-lb{font-family:'Share Tech Mono';font-size:11px;color:var(--t3);}
+.lv-n{font-family:'Orbitron';font-size:32px;font-weight:900;color:#fff;line-height:1;text-shadow:0 0 20px rgba(83,74,183,.55);}
+.lv-ti{font-size:13px;color:var(--pd);font-weight:600;}
+.day-prog{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+.day-pct{font-family:'Orbitron';font-size:10px;color:var(--tl);min-width:32px;}
+.day-bar{flex:1;height:3px;background:rgba(255,255,255,.04);border-radius:2px;overflow:hidden;}
+.day-bar-f{height:100%;background:linear-gradient(90deg,var(--teal),var(--tl));border-radius:2px;transition:width .5s ease;}
+.day-txt{font-family:'Share Tech Mono';font-size:9px;color:var(--t3);}
+.xp-meta{display:flex;justify-content:space-between;font-family:'Share Tech Mono';font-size:10px;color:var(--t3);margin-bottom:4px;}
+.xp-track{height:5px;background:rgba(255,255,255,.03);border:0.5px solid var(--border);border-radius:3px;overflow:hidden;}
+.xp-fill{height:100%;background:linear-gradient(90deg,#3C3489,#7F77DD);border-radius:3px;transition:width .7s cubic-bezier(.4,0,.2,1);}
+
+.mst{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));background:#020209;border-bottom:0.5px solid var(--border);flex-shrink:0;}
+.ms{text-align:center;padding:8px 2px;border-right:0.5px solid var(--border);}
+.ms:last-child{border-right:none;}
+.ms-v{font-family:'Orbitron';font-size:14px;font-weight:700;}
+.ms-k{font-size:9px;color:var(--t3);margin-top:2px;font-family:'Share Tech Mono';}
+
+.content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:12px 14px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 12px);}
+.content::-webkit-scrollbar{display:none;}
+.tv{display:none;}.tv.on{display:block;}
+.sh{display:flex;align-items:center;gap:8px;margin:4px 0 10px;}
+.sh-l{flex:1;height:0.5px;background:var(--border);}
+.sh-t{font-family:'Orbitron';font-size:8px;letter-spacing:2px;color:var(--t3);}
+
+/* Quest items */
+.qi{background:var(--panel);border:0.5px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:7px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:border-color .2s,background .2s;position:relative;overflow:hidden;}
+.qi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2.5px;background:var(--purple);border-radius:0 2px 2px 0;opacity:0;transition:opacity .25s;}
+.qi.done::before{opacity:1;}
+.qi.done{background:rgba(83,74,183,.07);border-color:rgba(83,74,183,.3);}
+.qi:active{transform:scale(.985);}
+.qi.locked{opacity:.45;cursor:not-allowed;}
+.qi.locked::after{content:'🔒';position:absolute;right:12px;font-size:13px;}
+.lock-req{font-size:9px;color:var(--amber);margin-top:1px;font-family:'Share Tech Mono';}
+
+/* Difficulty badge */
+.diff{font-size:8px;border-radius:3px;padding:1px 5px;margin-left:4px;font-family:'Share Tech Mono';}
+.diff.easy{background:rgba(29,158,117,.12);border:0.5px solid rgba(29,158,117,.35);color:var(--tl);}
+.diff.hard{background:rgba(239,159,39,.10);border:0.5px solid rgba(239,159,39,.35);color:var(--amber);}
+.diff.brutal{background:rgba(226,75,74,.10);border:0.5px solid rgba(226,75,74,.35);color:var(--red);}
+
+.orb{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--t3);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .25s;}
+.orb.done{border-color:var(--purple);background:rgba(83,74,183,.2);}
+.orb-in{width:8px;height:8px;border-radius:50%;background:var(--pl);opacity:0;transition:opacity .25s;}
+.orb.done .orb-in{opacity:1;}
+.qb{flex:1;min-width:0;}
+.qn{font-size:13px;font-weight:600;color:var(--text);transition:color .2s;}
+.qn.s{text-decoration:line-through;color:var(--t3);}
+.qt{font-size:9px;color:var(--t3);margin-top:1px;font-family:'Share Tech Mono';}
+.qxp{font-family:'Orbitron';font-size:11px;font-weight:700;color:var(--pd);white-space:nowrap;}
+.qxp.o{color:var(--tl);}
+.ob{font-size:8px;background:rgba(29,158,117,.1);border:0.5px solid rgba(29,158,117,.3);border-radius:3px;padding:1px 4px;color:var(--tl);margin-left:4px;font-family:'Share Tech Mono';}
+.qi.emergency{border-color:rgba(226,75,74,.35);background:rgba(226,75,74,.05);}
+.qi.emergency::before{background:var(--red);opacity:1;}
+.qi.emergency.done{border-color:rgba(226,75,74,.2);background:rgba(226,75,74,.03);}
+.emg-badge{font-size:8px;background:rgba(226,75,74,.12);border:0.5px solid rgba(226,75,74,.35);border-radius:3px;padding:1px 4px;color:var(--red);margin-left:4px;font-family:'Share Tech Mono';}
+.qi.emergency .orb{border-color:rgba(226,75,74,.4);}
+.qi.emergency .orb.done{border-color:var(--red);background:rgba(226,75,74,.2);}
+.qi.emergency .orb.done .orb-in{background:var(--red);}
+.qi.emergency .qxp{color:var(--red);}
+.emg-toggle{width:100%;padding:9px 13px;border-radius:8px;border:0.5px solid rgba(226,75,74,.4);background:rgba(226,75,74,.06);color:var(--red);font-family:'Orbitron';font-size:9px;font-weight:700;letter-spacing:1.5px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;transition:background .2s;}
+.emg-toggle:active{background:rgba(226,75,74,.12);}
+.emg-toggle-arrow{font-size:12px;transition:transform .25s;}
+.emg-toggle.open .emg-toggle-arrow{transform:rotate(180deg);}
+#emergency-section{overflow:hidden;transition:max-height .3s ease,opacity .3s ease;max-height:0;opacity:0;}
+#emergency-section.open{max-height:300px;opacity:1;}
+
+/* Boss Quest */
+.boss-card{background:linear-gradient(135deg,rgba(239,159,39,.08),rgba(226,75,74,.08));border:0.5px solid rgba(239,159,39,.4);border-radius:10px;padding:12px 13px;margin-bottom:9px;cursor:pointer;position:relative;overflow:hidden;}
+.boss-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--amber),var(--red));border-radius:0 2px 2px 0;}
+.boss-card.done{opacity:.6;}
+.boss-header{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+.boss-icon{font-size:16px;}
+.boss-lbl{font-family:'Orbitron';font-size:7px;letter-spacing:2px;color:var(--amber);}
+.boss-name{font-size:13px;font-weight:700;color:var(--text);}
+.boss-xp{font-family:'Orbitron';font-size:13px;font-weight:700;color:var(--amber);}
+.boss-tags{font-size:9px;color:var(--t3);font-family:'Share Tech Mono';margin-top:2px;}
+
+/* Week progress */
+.week-prog{background:var(--panel);border:0.5px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+.week-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.week-lbl{font-family:'Orbitron';font-size:8px;letter-spacing:2px;color:var(--t3);}
+.week-days{display:flex;gap:4px;}
+.wd{flex:1;height:32px;border-radius:6px;border:0.5px solid var(--border);background:var(--panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;}
+.wd.done{border-color:var(--purple);background:rgba(83,74,183,.15);}
+.wd.today{border-color:var(--pl);}
+.wd-day{font-family:'Share Tech Mono';font-size:7px;color:var(--t3);}
+.wd-dot{width:5px;height:5px;border-radius:50%;background:var(--t3);}
+.wd.done .wd-dot{background:var(--pl);}
+
+/* Heatmap */
+.heatmap-box{background:var(--panel);border:0.5px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+.hm-title{font-family:'Orbitron';font-size:8px;letter-spacing:2px;color:var(--t3);margin-bottom:8px;display:flex;justify-content:space-between;}
+.hm-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:3px;}
+.hm-cell{aspect-ratio:1;border-radius:2px;background:rgba(255,255,255,.03);border:0.5px solid rgba(255,255,255,.04);}
+.hm-cell.done{background:rgba(83,74,183,.55);border-color:rgba(127,119,221,.4);}
+.hm-cell.miss{background:rgba(226,75,74,.2);border-color:rgba(226,75,74,.3);}
+.hm-cell.today{border-color:var(--pl);border-width:1px;}
+.hm-legend{display:flex;gap:10px;margin-top:7px;align-items:center;}
+.hm-leg{display:flex;align-items:center;gap:4px;font-family:'Share Tech Mono';font-size:8px;color:var(--t3);}
+.hm-leg-sq{width:8px;height:8px;border-radius:1px;}
+
+/* Summary card */
+.sum-card{background:var(--panel);border:0.5px solid var(--border2);border-radius:10px;padding:12px 13px;margin-bottom:9px;}
+.sum-row{display:flex;justify-content:space-between;align-items:center;}
+.sum-lbl{font-size:9px;color:var(--t3);font-family:'Share Tech Mono';margin-bottom:2px;}
+.sum-val{font-family:'Orbitron';font-size:20px;font-weight:700;color:var(--pl);}
+.sum-div{margin:9px 0;height:0.5px;background:var(--border);}
+.sum-row2{display:flex;justify-content:space-between;align-items:center;}
+.sum-l2{font-size:11px;color:var(--t3);font-family:'Share Tech Mono';}
+.sum-v2{font-family:'Orbitron';font-size:13px;font-weight:700;color:var(--amber);}
+
+/* Consistency score */
+.con-score{background:var(--panel);border:0.5px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+.con-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.con-lbl{font-family:'Orbitron';font-size:8px;letter-spacing:2px;color:var(--t3);}
+.con-num{font-family:'Orbitron';font-size:28px;font-weight:900;line-height:1;}
+.con-bar{height:6px;background:rgba(255,255,255,.04);border-radius:3px;overflow:hidden;}
+.con-fill{height:100%;border-radius:3px;transition:width .8s cubic-bezier(.4,0,.2,1);}
+.con-desc{font-size:11px;color:var(--t2);font-family:'Share Tech Mono';margin-top:6px;}
+
+/* Personal Records */
+.pr-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px;}
+.pr-card{background:var(--panel);border:0.5px solid var(--border);border-radius:8px;padding:10px 11px;}
+.pr-lbl{font-size:9px;color:var(--t3);font-family:'Share Tech Mono';margin-bottom:3px;}
+.pr-val{font-family:'Orbitron';font-size:16px;font-weight:700;color:var(--pl);}
+.pr-sub{font-size:9px;color:var(--t3);margin-top:2px;}
+
+/* Buttons */
+.btn{width:100%;padding:12px;border-radius:8px;border:0.5px solid var(--purple);background:transparent;color:var(--pl);font-family:'Orbitron';font-size:11px;font-weight:700;letter-spacing:1.5px;cursor:pointer;margin-top:8px;transition:background .2s;display:block;}
+.btn:active{background:rgba(83,74,183,.15);transform:scale(.98);}
+.btn.danger{border-color:var(--red);color:var(--red);}
+.btn.danger:active{background:rgba(226,75,74,.1);}
+.pen-box{background:rgba(226,75,74,.05);border:0.5px solid rgba(226,75,74,.25);border-radius:8px;padding:10px 12px;margin-top:10px;}
+.pen-h{font-family:'Orbitron';font-size:9px;color:var(--red);letter-spacing:1px;margin-bottom:6px;}
+.pen-li{font-size:12px;color:#b07070;margin-top:3px;font-family:'Share Tech Mono';}
+
+/* Custom quests */
+.cq-form{background:var(--panel);border:0.5px solid var(--border2);border-radius:10px;padding:11px 13px;margin-bottom:9px;}
+.cq-inp{width:100%;background:rgba(255,255,255,.04);border:0.5px solid var(--border2);border-radius:7px;padding:8px 11px;color:var(--text);font-family:'Rajdhani';font-size:13px;outline:none;margin-bottom:7px;-webkit-appearance:none;}
+.cq-inp:focus{border-color:var(--pl);}
+.cq-inp::placeholder{color:var(--t3);}
+.cq-row{display:flex;gap:7px;}
+.cq-row .cq-inp{flex:1;margin-bottom:0;}
+.cq-add{padding:8px 13px;border-radius:7px;border:0.5px solid var(--purple);background:rgba(83,74,183,.12);color:var(--pl);font-family:'Orbitron';font-size:9px;font-weight:700;letter-spacing:1px;cursor:pointer;white-space:nowrap;}
+.cq-add:active{background:rgba(83,74,183,.25);}
+.cq-del{font-size:9px;padding:2px 6px;border:0.5px solid rgba(226,75,74,.35);border-radius:4px;background:transparent;color:var(--red);cursor:pointer;font-family:'Share Tech Mono';margin-left:5px;}
+
+/* Attrs */
+.ag{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px;}
+.ac{background:var(--panel);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;}
+.ac-k{font-family:'Orbitron';font-size:9px;color:var(--t3);letter-spacing:1px;margin-bottom:3px;}
+.ac-v{font-family:'Orbitron';font-size:24px;font-weight:900;line-height:1;}
+.ac-n{font-size:10px;color:var(--t3);margin-top:3px;}
+.ac-b{height:2px;background:rgba(255,255,255,.04);border-radius:1px;margin-top:7px;overflow:hidden;}
+.ac-bf{height:100%;border-radius:1px;transition:width .5s ease;}
+
+/* Stat chart */
+.stat-chart{background:var(--panel);border:0.5px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+.sc-t{font-family:'Orbitron';font-size:8px;letter-spacing:2px;color:var(--t3);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
+.sc-legend{display:flex;gap:8px;flex-wrap:wrap;}
+.sc-leg-item{display:flex;align-items:center;gap:4px;font-size:8px;color:var(--t3);font-family:'Share Tech Mono';}
+.sc-leg-dot{width:7px;height:7px;border-radius:50%;}
+canvas#statChart{width:100%;height:100px;display:block;}
+
+/* AP */
+.ap-box{background:var(--panel);border:0.5px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+.ap-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.ap-t{font-family:'Orbitron';font-size:10px;color:var(--t2);letter-spacing:1px;}
+.ap-c{font-family:'Orbitron';font-size:15px;font-weight:700;color:var(--amber);}
+.ap-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border);}
+.ap-row:last-child{border-bottom:none;}
+.ap-k{font-family:'Orbitron';font-size:10px;color:var(--pd);width:32px;}
+.ap-n{flex:1;font-size:13px;color:var(--t2);}
+.ap-v{font-family:'Orbitron';font-size:13px;color:var(--text);width:24px;text-align:center;}
+.ap-b{border:0.5px solid var(--purple);color:var(--pl);background:transparent;border-radius:5px;width:28px;height:28px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.ap-b:active{background:rgba(83,74,183,.2);}
+
+/* Streak cards */
+.sk-c{background:var(--panel);border:0.5px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px;}
+.sk-d{font-family:'Orbitron';font-size:11px;color:var(--pd);min-width:54px;}
+.sk-n{flex:1;font-size:13px;color:var(--t2);}
+.sk-x{font-family:'Orbitron';font-size:11px;font-weight:700;color:var(--tl);}
+
+/* Titles section */
+.title-card{background:var(--panel);border:0.5px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px;transition:border-color .2s;}
+.title-card.unlocked{border-color:rgba(239,159,39,.4);background:rgba(239,159,39,.04);}
+.title-card.active{border-color:rgba(239,159,39,.7);background:rgba(239,159,39,.08);}
+.title-icon{font-size:18px;flex-shrink:0;}
+.title-info{flex:1;}
+.title-name{font-family:'Orbitron';font-size:11px;font-weight:700;color:var(--text);}
+.title-card.unlocked .title-name,.title-card.active .title-name{color:var(--amber);}
+.title-req{font-size:9px;color:var(--t3);font-family:'Share Tech Mono';margin-top:2px;}
+.title-equip{font-family:'Orbitron';font-size:8px;padding:4px 8px;border-radius:4px;border:0.5px solid var(--amber);color:var(--amber);background:transparent;cursor:pointer;}
+.title-equip:active{background:rgba(239,159,39,.1);}
+.title-equip.on{background:rgba(239,159,39,.15);border-color:var(--amber);}
+.title-lock{font-size:11px;color:var(--t3);}
+
+/* Shadow Army */
+.shadow-section{margin-bottom:10px;}
+.shadow-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.shadow-title{font-family:'Orbitron';font-size:8px;letter-spacing:2px;color:var(--t3);}
+.shadow-count{font-family:'Orbitron';font-size:11px;color:var(--pd);}
+.shadow-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.shadow-card{background:var(--panel);border:0.5px solid var(--border);border-radius:8px;padding:8px 6px;text-align:center;}
+.shadow-card.active{border-color:rgba(127,119,221,.4);background:rgba(83,74,183,.1);}
+.shadow-card.locked{opacity:.3;}
+.shadow-ico{font-size:20px;margin-bottom:3px;}
+.shadow-name{font-size:8px;color:var(--t3);font-family:'Share Tech Mono';line-height:1.2;}
+.shadow-card.active .shadow-name{color:var(--pd);}
+.shadow-buff{font-size:8px;color:var(--tl);font-family:'Orbitron';margin-top:2px;}
+
+/* Dungeon */
+.dungeon-card{background:linear-gradient(135deg,rgba(83,74,183,.1),rgba(226,75,74,.06));border:0.5px solid rgba(83,74,183,.5);border-radius:10px;padding:13px 14px;margin-bottom:10px;position:relative;overflow:hidden;}
+.dungeon-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--pl),var(--red));border-radius:0 2px 2px 0;}
+.dungeon-lbl{font-family:'Orbitron';font-size:7px;letter-spacing:3px;color:var(--pd);margin-bottom:4px;}
+.dungeon-name{font-family:'Orbitron';font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px;}
+.dungeon-prog{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;}
+.dungeon-pct{font-family:'Orbitron';font-size:10px;color:var(--pl);}
+.dungeon-xp{font-family:'Orbitron';font-size:11px;font-weight:700;color:var(--amber);}
+.dungeon-bar{height:3px;background:rgba(255,255,255,.04);border-radius:2px;overflow:hidden;}
+.dungeon-bar-f{height:100%;background:linear-gradient(90deg,var(--purple),var(--pl));border-radius:2px;transition:width .5s ease;}
+
+/* Rank cards */
+.rk-c{background:var(--panel);border:0.5px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:6px;display:flex;align-items:center;gap:11px;transition:border-color .2s,background .2s;}
+.rk-l{font-family:'Orbitron';font-size:17px;font-weight:900;width:34px;height:34px;border-radius:6px;display:flex;align-items:center;justify-content:center;border:0.5px solid;flex-shrink:0;}
+.rk-i{flex:1;}
+.rk-t{font-size:13px;color:var(--text);font-weight:600;}
+.rk-s{font-size:9px;color:var(--t3);font-family:'Share Tech Mono';margin-top:1px;}
+.cur-chip{font-family:'Orbitron';font-size:8px;background:rgba(83,74,183,.15);border:0.5px solid var(--purple);border-radius:4px;padding:3px 7px;color:var(--pd);}
+
+/* Timer modal */
+.timer-modal{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s;}
+.timer-modal.open{opacity:1;pointer-events:all;}
+.timer-box{background:#080818;border:0.5px solid var(--border2);border-radius:14px;padding:26px 22px;width:min(340px,88vw);text-align:center;}
+.timer-lbl{font-family:'Orbitron';font-size:9px;letter-spacing:3px;color:var(--t3);margin-bottom:10px;}
+.timer-name{font-size:15px;font-weight:600;color:var(--text);margin-bottom:18px;}
+.timer-dsp{font-family:'Orbitron';font-size:46px;font-weight:900;color:var(--pl);letter-spacing:2px;line-height:1;margin-bottom:5px;text-shadow:0 0 30px rgba(127,119,221,.4);}
+.timer-prog{height:3px;background:rgba(255,255,255,.05);border-radius:2px;margin-bottom:22px;overflow:hidden;}
+.timer-prog-f{height:100%;background:linear-gradient(90deg,var(--purple),var(--pl));border-radius:2px;transition:width .5s linear;}
+.timer-btns{display:flex;gap:10px;}
+.timer-btn{flex:1;padding:10px;border-radius:8px;border:0.5px solid var(--border2);background:transparent;color:var(--text);font-family:'Orbitron';font-size:10px;font-weight:700;letter-spacing:1px;cursor:pointer;}
+.timer-btn.start{border-color:var(--pl);color:var(--pl);}
+.timer-btn.close{border-color:var(--t3);color:var(--t3);}
+
+/* Level Up overlay - dramatic */
+#lv-overlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s;}
+#lv-overlay.on{opacity:1;pointer-events:all;}
+.lv-ov-rank{font-family:'Orbitron';font-size:80px;font-weight:900;line-height:1;animation:lvPop .4s cubic-bezier(.34,1.56,.64,1) forwards;}
+@keyframes lvPop{from{transform:scale(.3);opacity:0}to{transform:scale(1);opacity:1}}
+.lv-ov-label{font-family:'Orbitron';font-size:10px;letter-spacing:4px;color:var(--t3);margin-bottom:6px;margin-top:12px;}
+.lv-ov-num{font-family:'Orbitron';font-size:32px;font-weight:900;color:#fff;text-shadow:0 0 40px rgba(127,119,221,.8);}
+.lv-ov-title{font-size:14px;color:var(--pd);margin-top:6px;}
+.lv-ov-ap{font-family:'Orbitron';font-size:11px;color:var(--amber);margin-top:10px;border:0.5px solid rgba(239,159,39,.4);border-radius:6px;padding:5px 14px;}
+.lv-ov-tap{font-family:'Share Tech Mono';font-size:10px;color:var(--t3);margin-top:24px;animation:blink 1.5s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:.3}50%{opacity:1}}
+.lv-particles{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
+.lv-p{position:absolute;width:2px;border-radius:1px;animation:lvpart linear forwards;}
+@keyframes lvpart{0%{transform:translateY(100vh) rotate(0deg);opacity:1}100%{transform:translateY(-20vh) rotate(720deg);opacity:0}}
+
+/* Confirm modal */
+.confirm-modal{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;}
+.confirm-modal.open{opacity:1;pointer-events:all;}
+.confirm-box{background:#080818;border:0.5px solid rgba(226,75,74,.4);border-radius:14px;padding:22px 19px;width:min(310px,88vw);text-align:center;}
+.confirm-icon{font-size:30px;margin-bottom:10px;}
+.confirm-t{font-family:'Orbitron';font-size:12px;font-weight:700;color:var(--red);margin-bottom:7px;}
+.confirm-d{font-size:12px;color:var(--t2);line-height:1.5;margin-bottom:18px;}
+.confirm-btns{display:flex;gap:10px;}
+.confirm-btn{flex:1;padding:10px;border-radius:8px;border:0.5px solid;background:transparent;font-family:'Orbitron';font-size:9px;font-weight:700;letter-spacing:1px;cursor:pointer;}
+.confirm-btn.yes{border-color:var(--red);color:var(--red);}
+.confirm-btn.no{border-color:var(--t3);color:var(--t3);}
+
+/* History */
+.hist-day{background:var(--panel);border:0.5px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:6px;}
+.hist-date{font-family:'Orbitron';font-size:9px;letter-spacing:1px;color:var(--t3);margin-bottom:4px;}
+.hist-row{display:flex;justify-content:space-between;align-items:center;}
+.hist-xp{font-family:'Orbitron';font-size:14px;font-weight:700;color:var(--pl);}
+.hist-pct{font-size:10px;color:var(--t2);font-family:'Share Tech Mono';}
+.hist-bar{height:3px;background:rgba(255,255,255,.04);border-radius:2px;margin-top:5px;overflow:hidden;}
+.hist-bar-f{height:100%;background:linear-gradient(90deg,var(--purple),var(--pl));border-radius:2px;}
+.hist-empty{text-align:center;padding:30px 0;font-family:'Share Tech Mono';font-size:12px;color:var(--t3);}
+
+/* Data box */
+.data-box{background:var(--panel);border:0.5px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:9px;}
+.data-t{font-family:'Orbitron';font-size:9px;letter-spacing:2px;color:var(--t3);margin-bottom:9px;}
+.data-btns{display:flex;gap:7px;}
+.data-btn{flex:1;padding:9px 5px;border-radius:7px;border:0.5px solid var(--border2);background:transparent;color:var(--t2);font-family:'Orbitron';font-size:8px;font-weight:700;letter-spacing:.5px;cursor:pointer;text-align:center;}
+.data-btn:active{background:rgba(255,255,255,.05);}
+#import-file{display:none;}
+
+/* Nav */
+.nav{background:#020209;border-top:0.5px solid var(--border2);display:flex;padding:5px 0;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 5px);flex-shrink:0;}
+.ni{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:4px 0;transition:opacity .15s;}
+.ni:active{opacity:.6;}
+.ni svg{width:20px;height:20px;fill:none;stroke:var(--t3);stroke-width:1.5;transition:stroke .2s;}
+.ni span{font-size:8px;color:var(--t3);font-family:'Orbitron';letter-spacing:.5px;transition:color .2s;}
+.ni.on svg{stroke:var(--pl);}
+.ni.on span{color:var(--pl);}
+
+/* ── Sync UI ── */
+.sync-bar{background:#020209;border-bottom:0.5px solid var(--border);padding:5px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px;}
+.sync-status{display:flex;align-items:center;gap:6px;font-family:'Share Tech Mono';font-size:10px;color:var(--t3);}
+.sync-dot{width:6px;height:6px;border-radius:50%;background:var(--t3);flex-shrink:0;}
+.sync-dot.online{background:var(--tl);box-shadow:0 0 6px var(--tl);}
+.sync-dot.syncing{background:var(--amber);animation:pulse .8s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+.sync-btn{font-family:'Orbitron';font-size:8px;font-weight:700;letter-spacing:.5px;padding:4px 10px;border-radius:5px;border:0.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;white-space:nowrap;}
+.sync-btn.login{border-color:rgba(83,74,183,.6);color:var(--pl);}
+.sync-btn:active{background:rgba(255,255,255,.05);}
+.sync-avatar{width:20px;height:20px;border-radius:50%;object-fit:cover;border:1px solid var(--border2);}
+/* Sync modal */
+.sync-modal{position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;}
+.sync-modal.open{opacity:1;pointer-events:all;}
+.sync-modal-box{background:#080818;border:0.5px solid var(--border2);border-radius:14px;padding:26px 22px;width:min(320px,88vw);text-align:center;}
+.sync-modal-icon{font-size:36px;margin-bottom:12px;}
+.sync-modal-t{font-family:'Orbitron';font-size:13px;font-weight:700;color:var(--pl);margin-bottom:8px;}
+.sync-modal-d{font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:20px;}
+.sync-modal-btns{display:flex;flex-direction:column;gap:8px;}
+.sync-modal-btn{width:100%;padding:12px;border-radius:8px;border:0.5px solid var(--border2);background:transparent;color:var(--text);font-family:'Orbitron';font-size:10px;font-weight:700;letter-spacing:1px;cursor:pointer;}
+.sync-modal-btn.google{border-color:rgba(83,74,183,.6);color:var(--pl);display:flex;align-items:center;justify-content:center;gap:8px;}
+.sync-modal-btn.google:active{background:rgba(83,74,183,.1);}
+.sync-modal-btn.cancel{border-color:var(--t3);color:var(--t3);}
+.sync-modal-btn.cancel:active{background:rgba(255,255,255,.04);}
+.sync-user-card{background:rgba(83,74,183,.08);border:0.5px solid var(--border2);border-radius:10px;padding:14px;margin-bottom:16px;display:flex;align-items:center;gap:12px;}
+.sync-user-info{flex:1;text-align:left;}
+.sync-user-name{font-size:14px;font-weight:600;color:var(--text);}
+.sync-user-email{font-size:10px;color:var(--t3);font-family:'Share Tech Mono';margin-top:2px;}
+#toast{position:fixed;top:75px;left:50%;transform:translateX(-50%) translateY(-12px);background:#0c0c22;border:0.5px solid var(--purple);border-radius:8px;padding:9px 15px;font-size:12px;color:var(--text);opacity:0;transition:all .3s;pointer-events:none;z-index:999;text-align:center;white-space:nowrap;max-width:92vw;}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+.txp{font-family:'Orbitron';font-weight:700;color:var(--pd);}
+#lv-flash{position:fixed;inset:0;background:rgba(83,74,183,.14);pointer-events:none;opacity:0;z-index:498;transition:opacity .4s;}
+#lv-flash.on{opacity:1;}
+.timer-ico{font-size:10px;margin-left:4px;cursor:pointer;opacity:.65;}
+
+/* Gold */
+.gold-chip{display:flex;align-items:center;gap:4px;background:rgba(239,159,39,.08);border:0.5px solid rgba(239,159,39,.3);border-radius:6px;padding:2px 8px;}
+.gold-v{font-family:'Orbitron';font-size:12px;font-weight:700;color:var(--amber);}
+.gold-l{font-size:8px;color:rgba(239,159,39,.55);font-family:'Share Tech Mono';}
+
+/* Shop */
+.shop-card{background:var(--panel);border:0.5px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:7px;}
+.shop-card.legendary{border-color:rgba(239,159,39,.35);background:rgba(239,159,39,.03);}
+.shop-card.owned{border-color:rgba(29,158,117,.35);background:rgba(29,158,117,.03);}
+.shop-row{display:flex;align-items:center;gap:10px;}
+.shop-icon{font-size:22px;flex-shrink:0;width:32px;text-align:center;}
+.shop-body{flex:1;min-width:0;}
+.shop-name{font-family:'Orbitron';font-size:11px;font-weight:700;color:var(--text);}
+.shop-desc{font-size:10px;color:var(--t2);font-family:'Share Tech Mono';margin-top:2px;}
+.shop-cost{font-family:'Orbitron';font-size:10px;font-weight:700;color:var(--amber);margin-bottom:4px;text-align:right;}
+.shop-btn{border:0.5px solid var(--purple);background:transparent;color:var(--pl);font-family:'Orbitron';font-size:8px;font-weight:700;padding:5px 10px;border-radius:5px;cursor:pointer;white-space:nowrap;}
+.shop-btn:active{background:rgba(83,74,183,.15);}
+.shop-btn.owned-btn{border-color:rgba(29,158,117,.4);color:var(--tl);cursor:default;}
+.shop-btn.poor-btn{border-color:var(--t3);color:var(--t3);cursor:default;}
+
+/* Inventory */
+.inv-card{background:var(--panel);border:0.5px solid var(--border);border-radius:9px;padding:10px 13px;margin-bottom:6px;display:flex;align-items:center;gap:10px;}
+.inv-icon{font-size:18px;flex-shrink:0;width:28px;text-align:center;}
+.inv-body{flex:1;}
+.inv-name{font-family:'Orbitron';font-size:10px;font-weight:700;color:var(--text);}
+.inv-desc{font-size:10px;color:var(--t2);font-family:'Share Tech Mono';margin-top:2px;}
+.inv-use{border:0.5px solid var(--teal);color:var(--tl);background:transparent;font-family:'Orbitron';font-size:8px;font-weight:700;padding:5px 9px;border-radius:5px;cursor:pointer;}
+.inv-use:active{background:rgba(29,158,117,.15);}
+.inv-empty{text-align:center;padding:24px 0;font-family:'Share Tech Mono';font-size:11px;color:var(--t3);}
+
+/* Dungeon progress */
+.dg-prog-wrap{margin-top:6px;}
+.dg-prog-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;}
+.dg-prog-lbl{font-family:'Share Tech Mono';font-size:9px;color:var(--t3);}
+.dg-prog-pct{font-family:'Orbitron';font-size:9px;color:var(--tl);}
+.dg-prog-bar{height:2px;background:rgba(255,255,255,.05);border-radius:1px;overflow:hidden;}
+.dg-prog-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--tl));border-radius:1px;transition:width .4s ease;}
+
+/* Box overlay */
+#box-overlay{display:none;position:fixed;inset:0;background:rgba(4,4,13,.93);z-index:600;align-items:center;justify-content:center;flex-direction:column;gap:12px;}
+#box-overlay.on{display:flex;}
+.box-rarity{font-family:'Orbitron';font-size:9px;letter-spacing:3px;color:var(--t3);}
+.box-icon{font-size:60px;}
+.box-item-name{font-family:'Orbitron';font-size:18px;font-weight:900;color:var(--text);}
+.box-item-desc{font-size:12px;color:var(--t2);font-family:'Share Tech Mono';text-align:center;max-width:260px;}
+.box-item-val{font-family:'Orbitron';font-size:26px;font-weight:900;color:var(--amber);}
+.box-collect-btn{margin-top:8px;padding:11px 30px;border-radius:8px;border:0.5px solid var(--purple);background:transparent;color:var(--pl);font-family:'Orbitron';font-size:10px;font-weight:700;letter-spacing:1.5px;cursor:pointer;}
+
+/* Curse overlay */
+#curse-overlay{display:none;position:fixed;inset:0;background:rgba(4,4,13,.93);z-index:600;align-items:center;justify-content:center;flex-direction:column;gap:12px;}
+#curse-overlay.on{display:flex;}
+.curse-btns{display:flex;gap:10px;margin-top:6px;}
+.curse-btn{padding:11px 22px;border-radius:8px;border:0.5px solid;background:transparent;font-family:'Orbitron';font-size:9px;font-weight:700;letter-spacing:1px;cursor:pointer;}
+.curse-btn.accept{border-color:var(--red);color:var(--red);}
+.curse-btn.refuse{border-color:var(--pl);color:var(--pl);}
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div class="scanline"></div>
+<div id="lv-flash"></div>
+<div id="toast"></div>
+
+<!-- Level Up Dramatic Overlay -->
+<div id="lv-overlay" onclick="closeLvOverlay()">
+  <div class="lv-particles" id="lvParticles"></div>
+  <div class="lv-ov-label">LEVEL UP</div>
+  <div class="lv-ov-rank" id="lv-ov-rank">E</div>
+  <div class="lv-ov-num" id="lv-ov-num">LEVEL 5</div>
+  <div class="lv-ov-title" id="lv-ov-title">Weakest Hunter</div>
+  <div class="lv-ov-ap">+5 ABILITY POINTS</div>
+  <div class="lv-ov-tap">TAP TO CONTINUE</div>
+</div>
+
+<!-- Timer Modal -->
+<div class="timer-modal" id="timerModal">
+  <div class="timer-box">
+    <div class="timer-lbl">QUEST TIMER</div>
+    <div class="timer-name" id="timerName">—</div>
+    <div class="timer-dsp" id="timerDsp">60:00</div>
+    <div class="timer-prog"><div class="timer-prog-f" id="timerProgF" style="width:100%"></div></div>
+    <div class="timer-btns">
+      <button class="timer-btn start" id="timerStartBtn" onclick="timerToggle()">START</button>
+      <button class="timer-btn close" onclick="timerClose()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="confirm-modal" id="confirmModal">
+  <div class="confirm-box">
+    <div class="confirm-icon">⚠️</div>
+    <div class="confirm-t">PENALTY TRIGGER</div>
+    <div class="confirm-d">This will reset your streak to 0, lose all XP earned today, and impose 200 mandatory squats.<br><br>Are you sure?</div>
+    <div class="confirm-btns">
+      <button class="confirm-btn yes" onclick="confirmPenalty()">CONFIRM</button>
+      <button class="confirm-btn no" onclick="closeConfirm()">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sync Modal -->
+<div class="sync-modal" id="syncModal">
+  <div class="sync-modal-box">
+    <div id="syncModalContent"></div>
+  </div>
+</div>
+
+<div class="app">
+  <div class="sbar">
+    <span class="sbar-t" id="clock">00:00</span>
+    <div class="gold-chip"><span class="gold-v" id="gold-disp">0</span><span class="gold-l">GOLD</span></div>
+    <div class="sbar-i">
+      <div class="sig"><span></span><span></span><span></span></div>
+      <div class="bat"><div class="bat-f"></div></div>
+    </div>
+  </div>
+  <!-- Cloud Sync Bar -->
+  <div class="sync-bar">
+    <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncLabel">Local only — tap to sync</span></div>
+    <button class="sync-btn login" id="syncBtn" onclick="openSyncModal()">☁️ SYNC</button>
+  </div>
+
+  <!-- Box Overlay -->
+  <div id="box-overlay">
+    <div class="box-rarity" id="box-rarity-lbl">COMMON BOX</div>
+    <div class="box-icon" id="box-icon-el">📦</div>
+    <div class="box-item-name" id="box-item-name">—</div>
+    <div class="box-item-desc" id="box-item-desc">—</div>
+    <div class="box-item-val" id="box-item-val">—</div>
+    <button class="box-collect-btn" onclick="closeBox()">— COLLECT —</button>
+  </div>
+
+  <!-- Curse Overlay -->
+  <div id="curse-overlay">
+    <div style="font-family:'Orbitron';font-size:9px;color:var(--red);letter-spacing:3px">! CURSE RECEIVED</div>
+    <div style="font-size:48px" id="curse-icon-el">💀</div>
+    <div style="font-family:'Orbitron';font-size:17px;font-weight:900;color:var(--text)" id="curse-name-el">—</div>
+    <div style="font-size:11px;color:var(--t2);font-family:'Share Tech Mono';text-align:center;max-width:260px" id="curse-desc-el">—</div>
+    <div style="font-family:'Orbitron';font-size:10px;color:var(--amber)" id="curse-cost-el">—</div>
+    <div class="curse-btns">
+      <button class="curse-btn accept" onclick="acceptCurse()">ACCEPT</button>
+      <button class="curse-btn refuse" id="curse-refuse-btn" onclick="refuseCurse()">REFUSE</button>
+    </div>
+  </div>
+
+  <!-- Daily System Quote -->
+  <div class="sys-quote" id="sys-quote" onclick="nextQuote()">— Loading system message...</div>
+
+  <div class="hdr">
+    <div class="hdr-top">
+      <div>
+        <div class="sys-lbl">SYSTEM — SOLO LEVELING</div>
+        <div class="player-n">DESTROYER</div>
+        <div class="player-title" id="player-title"></div>
+        <div id="active-buffs-bar" style="font-size:9px;color:var(--amber);font-family:'Share Tech Mono';margin-top:2px;min-height:13px;"></div>
+      </div>
+      <div class="rank-box">
+        <div class="rank-l" id="h-rl">E</div>
+        <div class="rank-lb">RANK</div>
+      </div>
+    </div>
+    <div class="lv-row">
+      <span class="lv-lb">LV</span>
+      <span class="lv-n" id="h-lv">4</span>
+      <span class="lv-ti" id="h-ti">Weakest Hunter</span>
+    </div>
+    <div class="day-prog">
+      <span class="day-pct" id="day-pct">0%</span>
+      <div class="day-bar"><div class="day-bar-f" id="day-bar-f" style="width:0%"></div></div>
+      <span class="day-txt" id="day-txt">0/4 main</span>
+    </div>
+    <div class="xp-meta"><span>EXPERIENCE</span><span id="h-xpt">15 / 100 XP</span></div>
+    <div class="xp-track"><div class="xp-fill" id="h-xpb" style="width:15%"></div></div>
+  </div>
+
+  <div class="mst">
+    <div class="ms"><div class="ms-v" id="ms-str" style="color:#D85A30">10</div><div class="ms-k">STR</div></div>
+    <div class="ms"><div class="ms-v" id="ms-vit" style="color:#1D9E75">10</div><div class="ms-k">VIT</div></div>
+    <div class="ms"><div class="ms-v" id="ms-agi" style="color:#378ADD">10</div><div class="ms-k">AGI</div></div>
+    <div class="ms"><div class="ms-v" id="ms-int" style="color:#7F77DD">5</div><div class="ms-k">INT</div></div>
+    <div class="ms"><div class="ms-v" id="ms-sen" style="color:#EF9F27">5</div><div class="ms-k">SEN</div></div>
+  </div>
+
+  <div class="content" id="content">
+
+    <!-- QUESTS -->
+    <div class="tv on" id="tv-quests">
+      <div id="boss-section"></div>
+      <div id="dungeon-section"></div>
+      <button class="emg-toggle" id="emg-toggle-btn" onclick="toggleEmergency()">
+        <span id="emg-toggle-label">⚠ EMERGENCY QUESTS — ΑΝΕΝΕΡΓΑ</span>
+        <span class="emg-toggle-arrow">▼</span>
+      </button>
+      <div id="emergency-section"><div id="emergency-list"></div><div style="height:6px"></div></div>
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">DAILY QUESTS</div><div class="sh-l"></div></div>
+      <div id="quest-list"></div>
+      <div class="sh" style="margin-top:12px"><div class="sh-l"></div><div class="sh-t">ADD CUSTOM QUEST</div><div class="sh-l"></div></div>
+      <div class="cq-form">
+        <div class="cq-row">
+          <input class="cq-inp" id="cq-name" placeholder="Quest name..." maxlength="40">
+          <input class="cq-inp" id="cq-xp" placeholder="XP" type="number" min="1" max="100" style="width:60px;flex:none">
+          <button class="cq-add" onclick="addCustomQuest()">+ ADD</button>
+        </div>
+      </div>
+      <div class="sh" style="margin-top:12px"><div class="sh-l"></div><div class="sh-t">KM TRACKER</div><div class="sh-l"></div></div>
+      <div style="background:var(--panel);border:0.5px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <div style="flex:1;">
+            <div style="font-family:'Orbitron';font-size:20px;font-weight:900;color:var(--pl)" id="km-today-disp">0.0 km</div>
+            <div style="font-family:'Share Tech Mono';font-size:9px;color:var(--t3);margin-top:2px">TODAY'S DISTANCE</div>
+          </div>
+          <div style="text-align:right;font-family:'Share Tech Mono';font-size:10px;color:var(--t3)">
+            <div id="km-boss-status">Boss: 0/5km</div>
+            <div id="km-dg-status">Dungeon: 0/10km</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <input id="km-input" type="number" step="0.1" min="0" placeholder="km run/walked..." style="flex:1;background:var(--panel2);border:0.5px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:'Share Tech Mono';font-size:12px;outline:none;">
+          <button onclick="addKm()" style="padding:8px 14px;border-radius:6px;border:0.5px solid var(--purple);background:transparent;color:var(--pl);font-family:'Orbitron';font-size:9px;font-weight:700;cursor:pointer;">+ ADD</button>
+        </div>
+      </div>
+
+      <div class="sh" style="margin-top:12px"><div class="sh-l"></div><div class="sh-t">SUMMARY</div><div class="sh-l"></div></div>
+      <div class="sum-card">
+        <div class="sum-row">
+          <div><div class="sum-lbl">XP EARNED TODAY</div><div class="sum-val" id="s-earned">+0 XP</div></div>
+          <div style="text-align:right"><div class="sum-lbl">NO CORN STREAK</div><div style="font-family:'Orbitron';font-size:20px;font-weight:700;color:var(--amber)" id="s-streak">4</div></div>
+        </div>
+        <div class="sum-div"></div>
+        <div class="sum-row2"><div class="sum-l2">ABILITY POINTS</div><div class="sum-v2" id="s-ap">0</div></div>
+      </div>
+      <button class="btn" id="claim-btn" onclick="claimDay()">— CLAIM DAILY XP —</button>
+      <button class="btn danger" onclick="openConfirm()" style="margin-top:6px">— TRIGGER PENALTY —</button>
+      <div class="pen-box">
+        <div class="pen-h">! PENALTY ZONE</div>
+        <div class="pen-li">— Lose all daily XP</div>
+        <div class="pen-li">— 200 Squats mandatory</div>
+        <div class="pen-li">— No gaming for 2 days</div>
+        <div class="pen-li">— Streak resets to Day 0</div>
+      </div>
+      <div style="height:16px"></div>
+    </div>
+
+    <!-- STATS -->
+    <div class="tv" id="tv-stats">
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">ATTRIBUTES</div><div class="sh-l"></div></div>
+      <div class="ag" id="attr-grid"></div>
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">SHADOW ARMY</div><div class="sh-l"></div></div>
+      <div class="shadow-section">
+        <div class="shadow-header"><span class="shadow-title">SOLDIERS AWAKENED</span><span class="shadow-count" id="shadow-count">0 / 8</span></div>
+        <div class="shadow-grid" id="shadow-grid"></div>
+      </div>
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">STAT HISTORY</div><div class="sh-l"></div></div>
+      <div class="stat-chart">
+        <div class="sc-t"><span>LAST 14 DAYS</span><div class="sc-legend" id="sc-legend"></div></div>
+        <canvas id="statChart" height="100"></canvas>
+      </div>
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">ASSIGN POINTS</div><div class="sh-l"></div></div>
+      <div class="ap-box">
+        <div class="ap-hd"><div class="ap-t">ABILITY POINTS</div><div class="ap-c" id="ap-count">0 AP</div></div>
+        <div id="ap-rows"></div>
+      </div>
+      <div style="height:16px"></div>
+    </div>
+
+    <!-- STREAKS -->
+    <div class="tv" id="tv-streaks">
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">WEEKLY OVERVIEW</div><div class="sh-l"></div></div>
+      <div class="week-prog">
+        <div class="week-row"><span class="week-lbl">THIS WEEK</span><span style="font-family:'Orbitron';font-size:10px;color:var(--tl)" id="week-rate">0/7</span></div>
+        <div class="week-days" id="week-days"></div>
+        <div style="margin-top:7px;font-family:'Share Tech Mono';font-size:10px;color:var(--t3)" id="week-summary"></div>
+      </div>
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">CONSISTENCY SCORE</div><div class="sh-l"></div></div>
+      <div class="con-score">
+        <div class="con-row">
+          <div><div class="con-lbl">30-DAY SCORE</div></div>
+          <div class="con-num" id="con-num">0</div>
+        </div>
+        <div class="con-bar"><div class="con-fill" id="con-fill" style="width:0%"></div></div>
+        <div class="con-desc" id="con-desc">Complete more days to build your score.</div>
+      </div>
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">NO CORN MILESTONES</div><div class="sh-l"></div></div>
+      <div id="streak-list"></div>
+      <div class="sh" style="margin-top:10px"><div class="sh-l"></div><div class="sh-t">DAILY BONUSES</div><div class="sh-l"></div></div>
+      <div class="sk-c"><span class="sk-d">Every day</span><span class="sk-n">Full quest completion</span><span class="sk-x">+30 XP</span></div>
+      <div class="sk-c"><span class="sk-d">Hidden</span><span class="sk-n">Exceed limits while exhausted</span><span class="sk-x">+1 Stat</span></div>
+      <div class="sk-c"><span class="sk-d" style="color:var(--red)">Break</span><span class="sk-n">Streak broken — Day 0</span><span class="sk-x" style="color:var(--red)">Reset</span></div>
+      <div style="height:16px"></div>
+    </div>
+
+    <!-- RANKS / TITLES -->
+    <div class="tv" id="tv-ranks">
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">HUNTER RANKS</div><div class="sh-l"></div></div>
+      <div id="rank-list"></div>
+      <div class="sh" style="margin-top:10px"><div class="sh-l"></div><div class="sh-t">TITLES</div><div class="sh-l"></div></div>
+      <div id="title-list"></div>
+      <div class="sh" style="margin-top:10px"><div class="sh-l"></div><div class="sh-t">XP SCALE</div><div class="sh-l"></div></div>
+      <div class="sk-c"><span class="sk-d">Lv 1–10</span><span class="sk-n">100 XP per level</span><span class="sk-x" style="color:var(--pd)">E-Rank</span></div>
+      <div class="sk-c"><span class="sk-d">Lv 11–20</span><span class="sk-n">250 XP per level</span><span class="sk-x" style="color:var(--pd)">D-Rank</span></div>
+      <div class="sk-c"><span class="sk-d">Lv 21–35</span><span class="sk-n">500 XP per level</span><span class="sk-x" style="color:var(--pd)">C-Rank</span></div>
+      <div class="sk-c"><span class="sk-d">Lv 36–50</span><span class="sk-n">1000 XP per level</span><span class="sk-x" style="color:var(--pd)">B-Rank</span></div>
+      <div style="height:16px"></div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="tv" id="tv-history">
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">PERSONAL RECORDS</div><div class="sh-l"></div></div>
+      <div class="pr-grid" id="pr-grid"></div>
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">ACTIVITY HEATMAP</div><div class="sh-l"></div></div>
+      <div class="heatmap-box">
+        <div class="hm-title"><span>LAST 70 DAYS</span><span id="hm-rate" style="color:var(--tl)">0% completion</span></div>
+        <div class="hm-grid" id="hm-grid"></div>
+        <div class="hm-legend">
+          <div class="hm-leg"><div class="hm-leg-sq" style="background:rgba(255,255,255,.03);border:0.5px solid rgba(255,255,255,.08)"></div>None</div>
+          <div class="hm-leg"><div class="hm-leg-sq" style="background:rgba(83,74,183,.55)"></div>Done</div>
+          <div class="hm-leg"><div class="hm-leg-sq" style="background:rgba(226,75,74,.2)"></div>Missed</div>
+        </div>
+      </div>
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">QUEST HISTORY</div><div class="sh-l"></div></div>
+      <div id="hist-list"></div>
+      <div class="sh" style="margin-top:10px"><div class="sh-l"></div><div class="sh-t">DATA & SYNC</div><div class="sh-l"></div></div>
+      <div class="data-box">
+        <div class="data-t">BACKUP & RESTORE</div>
+        <div class="data-btns">
+          <button class="data-btn" onclick="exportData()">📤 EXPORT</button>
+          <button class="data-btn" onclick="document.getElementById('import-file').click()">📥 IMPORT</button>
+          <button class="data-btn" onclick="toggleTheme()" style="color:var(--amber);border-color:rgba(239,159,39,.4)">🎨 THEME</button>
+        </div>
+        <input type="file" id="import-file" accept=".json" onchange="importData(event)">
+        <div style="height:8px"></div>
+        <button class="data-btn" style="width:100%;padding:10px;border-color:rgba(83,74,183,.5);color:var(--pl)" onclick="openSyncModal()">☁️ CLOUD SYNC — Sign in to sync across devices</button>
+      </div>
+      <div style="height:16px"></div>
+    </div>
+
+    <!-- SHOP -->
+    <div class="tv" id="tv-shop">
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">PASSIVE BUFFS</div><div class="sh-l"></div></div>
+      <div id="shop-passive"></div>
+      <div class="sh" style="margin-top:4px"><div class="sh-l" style="background:rgba(239,159,39,.3)"></div><div class="sh-t" style="color:var(--amber)">LEGENDARY</div><div class="sh-l" style="background:rgba(239,159,39,.3)"></div></div>
+      <div id="shop-legendary"></div>
+      <div style="height:16px"></div>
+    </div>
+
+    <!-- INVENTORY -->
+    <div class="tv" id="tv-inventory">
+      <div class="sh"><div class="sh-l"></div><div class="sh-t">BUFFS</div><div class="sh-l"></div></div>
+      <div id="inv-buffs"></div>
+      <div class="sh" style="margin-top:4px"><div class="sh-l" style="background:rgba(226,75,74,.3)"></div><div class="sh-t" style="color:var(--red)">ACTIVE CURSES</div><div class="sh-l" style="background:rgba(226,75,74,.3)"></div></div>
+      <div id="inv-curses"></div>
+      <div style="height:16px"></div>
+    </div>
+
+  </div>
+  <div class="nav">
+    <div class="ni on" onclick="goTab('quests',0)">
+      <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      <span>Quests</span>
+    </div>
+    <div class="ni" onclick="goTab('stats',1)">
+      <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      <span>Stats</span>
+    </div>
+    <div class="ni" onclick="goTab('streaks',2)">
+      <svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+      <span>Streaks</span>
+    </div>
+    <div class="ni" onclick="goTab('ranks',3)">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
+      <span>Ranks</span>
+    </div>
+    <div class="ni" onclick="goTab('history',4)">
+      <svg viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <span>History</span>
+    </div>
+    <div class="ni" onclick="goTab('shop',5)">
+      <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+      <span>Shop</span>
+    </div>
+    <div class="ni" onclick="goTab('inventory',6)">
+      <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
+      <span>Inv</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Data ─────────────────────────────────────────────────────────────────────
+const EMERGENCY=[
+  {id:'emg_clean',name:'Καθάρισε το Σπίτι',tags:'Discipline · Home',xp:20,diff:'easy'},
+  {id:'emg_train',name:'Προπόνηση Έξω',tags:'STR · VIT — Outdoor Training',xp:25,diff:'hard'},
+];
+const QUESTS=[
+  {id:'workout',name:'Daily Workout',tags:'STR · VIT — 6x/week',xp:25,opt:false,timer:45,req:null,diff:'hard'},
+  {id:'nocorn',name:'No Corn Addiction',tags:'SEN · WIL — Purity Quest',xp:30,opt:false,timer:null,req:null,diff:'brutal'},
+  {id:'study',name:'1 Hour Studying',tags:'INT — Deep Work',xp:20,opt:false,timer:60,req:null,diff:'hard'},
+  {id:'shower',name:'Cold Shower',tags:'VIT · AGI — Quick Buff',xp:10,opt:false,timer:3,req:null,diff:'easy'},
+  {id:'skill',name:'Skill Training / Handstand',tags:'Social · Creative',xp:15,opt:true,timer:20,req:{key:'STR',val:15},diff:'hard'},
+  {id:'bed',name:'Tidy your Bed',tags:'Discipline',xp:5,opt:true,timer:null,req:null,diff:'easy'},
+];
+const BOSS_QUEST={id:'boss_weekly',name:'Weekly Boss: 5km Run',tags:'STR · VIT · AGI — Outdoor Boss',xp:100,diff:'brutal'};
+const DUNGEON_QUESTS=[
+  {id:'dg1',name:'100 Push-ups',tags:'STR · VIT',xp:30},
+  {id:'dg2',name:'2 Hour Study Session',tags:'INT — Deep Focus',xp:40},
+  {id:'dg3',name:'10km Walk',tags:'VIT · AGI — Endurance',xp:35},
+  {id:'dg4',name:'Cold Bath (10 min)',tags:'VIT — Extreme Buff',xp:25},
+  {id:'dg5',name:'No Phone Before Noon',tags:'SEN · Discipline',xp:20},
+];
+const ATTRS=[
+  {key:'STR',name:'Strength',color:'#D85A30'},
+  {key:'VIT',name:'Vitality',color:'#1D9E75'},
+  {key:'AGI',name:'Agility',color:'#378ADD'},
+  {key:'INT',name:'Intelligence',color:'#7F77DD'},
+  {key:'SEN',name:'Sense',color:'#EF9F27'},
+];
+const RANKS=[
+  {l:'E',name:'The Weakest',lvls:'1–10',c:'#888780',bg:'rgba(136,135,128,.12)',bc:'rgba(136,135,128,.35)'},
+  {l:'D',name:'Novice',lvls:'11–20',c:'#378ADD',bg:'rgba(55,138,221,.12)',bc:'rgba(55,138,221,.35)'},
+  {l:'C',name:'Intermediate',lvls:'21–35',c:'#1D9E75',bg:'rgba(29,158,117,.12)',bc:'rgba(29,158,117,.35)'},
+  {l:'B',name:'Advanced',lvls:'36–50',c:'#EF9F27',bg:'rgba(239,159,39,.12)',bc:'rgba(239,159,39,.35)'},
+  {l:'A',name:'Elite',lvls:'51–80',c:'#D85A30',bg:'rgba(216,90,48,.12)',bc:'rgba(216,90,48,.35)'},
+  {l:'S',name:'National Level',lvls:'81–100',c:'#7F77DD',bg:'rgba(127,119,221,.15)',bc:'rgba(127,119,221,.5)'},
+];
+const STREAKS=[
+  {d:'7 days',n:'Weekly Warrior',x:'+50 XP'},
+  {d:'14 days',n:'Fortnight Fighter',x:'+50 XP'},
+  {d:'21 days',n:'Habit Locked',x:'+50 XP'},
+  {d:'30 days',n:'Master of Self [TITLE]',x:'+200 XP'},
+  {d:'60 days',n:'Iron Will [TITLE]',x:'+300 XP'},
+  {d:'90 days',n:'Shadow Monarch',x:'+500 XP'},
+];
+// Titles: {id, name, icon, req description, check fn, shadow-army-style buff text}
+const TITLES=[
+  {id:'t_iron_body',name:'Iron Body',icon:'💪',req:'Complete 50 Workout quests',buff:'STR feasts earned × 1.1',check:s=>(s.totalCompleted&&s.totalCompleted['workout']||0)>=50},
+  {id:'t_scholar',name:'The Scholar',icon:'📚',req:'Complete 30 Study sessions',buff:'INT sessions sharpen mind',check:s=>(s.totalCompleted&&s.totalCompleted['study']||0)>=30},
+  {id:'t_immovable',name:'The Immovable',icon:'🗿',req:'Reach streak of 14 days',buff:'Will cannot be broken',check:s=>s.streak>=14},
+  {id:'t_ascetic',name:'Ascetic',icon:'🧊',req:'Complete 20 Cold Showers',buff:'Pain is just sensation',check:s=>(s.totalCompleted&&s.totalCompleted['shower']||0)>=20},
+  {id:'t_master_self',name:'Master of Self',icon:'⚔️',req:'Reach 30-day streak',buff:'Mind over matter',check:s=>s.streak>=30},
+  {id:'t_iron_will',name:'Iron Will',icon:'🔥',req:'Reach 60-day streak',buff:'Forged in discipline',check:s=>s.streak>=60},
+  {id:'t_shadow_monarch',name:'Shadow Monarch',icon:'👑',req:'Reach 90-day streak',buff:'I alone level up',check:s=>s.streak>=90},
+  {id:'t_dungeon_clearer',name:'Dungeon Clearer',icon:'🏆',req:'Complete 3 weekly dungeons',buff:'Dungeons hold no fear',check:s=>(s.dungeonsCleared||0)>=3},
+];
+const SHADOW_ARMY=[
+  {id:'sh1',name:'Igris',icon:'⚔️',buff:'+2 STR',req:'Level 10',unlockLvl:10},
+  {id:'sh2',name:'Iron',icon:'🛡️',buff:'+2 VIT',req:'Level 15',unlockLvl:15},
+  {id:'sh3',name:'Tank',icon:'💪',buff:'+2 STR',req:'Streak 7',unlockStreak:7},
+  {id:'sh4',name:'Beru',icon:'🐝',buff:'+3 AGI',req:'Level 20',unlockLvl:20},
+  {id:'sh5',name:'Tusk',icon:'🐗',buff:'+2 VIT',req:'Streak 21',unlockStreak:21},
+  {id:'sh6',name:'Kaisel',icon:'🐉',buff:'+2 INT',req:'Level 30',unlockLvl:30},
+  {id:'sh7',name:'Bellion',icon:'🌑',buff:'+3 SEN',req:'Streak 60',unlockStreak:60},
+  {id:'sh8',name:'Shadow King',icon:'👑',buff:'All +1',req:'Level 50',unlockLvl:50},
+];
+const QUOTES=[
+  '"The weak have no right to choose their death."',
+  '"I have to get stronger. I must."',
+  '"From this moment on, I alone level up."',
+  '"If I can\'t even handle this, why am I a Hunter?"',
+  '"Every scar is a lesson. Every pain is growth."',
+  '"Arise. The system is watching."',
+  '"Today\'s weakness becomes tomorrow\'s strength."',
+  '"No one saves you but yourself."',
+  '"The dungeon is inside you. Conquer it."',
+  '"Pain is temporary. Level is permanent."',
+  '"A Hunter who rests is a Hunter who falls behind."',
+  '"Shadow Monarch does not skip days."',
+  '"Your body is the gate. Push through it."',
+  '"Consistency is the only S-rank skill."',
+  '"The gap between you and your best self — close it today."',
+];
+const XPN=l=>l<=10?100:l<=20?250:l<=35?500:1000;
+const GR=l=>l<=10?'E':l<=20?'D':l<=35?'C':l<=50?'B':l<=80?'A':'S';
+const GT=l=>l<=10?'Weakest Hunter':l<=20?'Novice Hunter':l<=35?'Intermediate Hunter':l<=50?'Advanced Hunter':l<=80?'Elite Hunter':'National Level';
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let S={
+  level:4,totalXp:315,currentXp:15,streak:4,ap:0,
+  checked:{},attrs:{STR:10,VIT:10,AGI:10,INT:5,SEN:5},
+  emgActive:false,customQuests:[],
+  history:[],statHistory:[],
+  theme:'default',lastDate:null,
+  bossChecked:{},dungeonChecked:{},dungeonsCleared:0,
+  activeTitle:'',unlockedTitles:[],
+  totalCompleted:{},
+  quoteIdx:0,
+  records:{bestStreak:0,bestDayXp:0,firstRankDate:{}},
+  gold:0,ownedItems:[],inventory:[],curses:[],pendingCurse:null,
+};
+
+// ─── Sunday Workout Lock ──────────────────────────────────────────────────────
+function isWorkoutLocked(){return new Date().getDay()===0;}
+
+// ─── Gold & Shop ──────────────────────────────────────────────────────────────
+const GOLD_QUEST={workout:8,nocorn:10,study:7,shower:3,skill:5,bed:2,emg_clean:6,emg_train:8};
+const GOLD_BOSS=50,GOLD_STREAK=25;
+const SHOP_ITEMS=[
+  {id:'hunters_focus',name:"Hunter's Focus",desc:'Study quest counts with 45min',icon:'🎯',cost:150,type:'passive'},
+  {id:'shadow_armor',name:'Shadow Armor',desc:'Penalty: lose half XP only',icon:'🛡',cost:200,type:'passive'},
+  {id:'shadow_extraction',name:'Shadow Extraction',desc:'Double XP for one full day',icon:'⚡',cost:300,type:'legendary'},
+  {id:'monarchs_decree',name:"Monarch's Decree",desc:'One day off — streak survives',icon:'👑',cost:450,type:'legendary'},
+];
+const BOX_LOOT={
+  common:[
+    {w:40,type:'gold',name:'Shadow Pouch',desc:'A pouch of gold',icon:'💰',val:()=>10+Math.floor(Math.random()*21),display:v=>`+${v} GOLD`},
+    {w:25,type:'gold',name:"Hunter's Cache",desc:'Decent gold find',icon:'💰',val:()=>25+Math.floor(Math.random()*26),display:v=>`+${v} GOLD`},
+    {w:15,type:'xp',name:'XP Scroll',desc:'Instant XP boost',icon:'📜',val:()=>25,display:v=>`+${v} XP`},
+    {w:10,type:'stat',name:'Ancient Tome',desc:'+1 to a random stat',icon:'📖',val:()=>1,display:()=>'+1 STAT'},
+    {w:7,type:'buff',id:'shadow_cloak',name:'Shadow Cloak',desc:'Next penalty: half XP lost',icon:'🌑',val:()=>null,display:()=>'BUFF'},
+    {w:3,type:'curse',id:'weakening',name:'Weakening Curse',desc:'-10% XP for 1 day',icon:'💀',refuseCost:45,val:()=>null,display:()=>'CURSE'},
+  ],
+  rare:[
+    {w:35,type:'gold',name:"Monarch's Vault",desc:'Large gold reward',icon:'💰',val:()=>60+Math.floor(Math.random()*41),display:v=>`+${v} GOLD`},
+    {w:20,type:'xp',name:'XP Token',desc:'+50 XP immediately',icon:'📜',val:()=>50,display:v=>`+${v} XP`},
+    {w:20,type:'stat',name:'Ancient Tome',desc:'+1 to a random stat',icon:'📖',val:()=>1,display:()=>'+1 STAT'},
+    {w:15,type:'buff',id:'iron_will_shard',name:'Iron Will Shard',desc:'Streak survives one missed day',icon:'💎',val:()=>null,display:()=>'BUFF'},
+    {w:7,type:'buff',id:'shadow_cloak',name:'Shadow Cloak',desc:'Next penalty: half XP lost',icon:'🌑',val:()=>null,display:()=>'BUFF'},
+    {w:3,type:'curse',id:'shadow_bind',name:'Shadow Bind',desc:'One quest gives 0 XP tomorrow',icon:'⛓',refuseCost:65,val:()=>null,display:()=>'CURSE'},
+  ],
+  legendary:[
+    {w:40,type:'gold',name:'Shadow Treasury',desc:'Massive gold reward',icon:'💰',val:()=>150+Math.floor(Math.random()*101),display:v=>`+${v} GOLD`},
+    {w:25,type:'xp',name:'Legendary Scroll',desc:'+100 XP immediately',icon:'📜',val:()=>100,display:v=>`+${v} XP`},
+    {w:20,type:'stat',name:'Ancient Tome',desc:'+2 to random stats',icon:'📖',val:()=>2,display:v=>`+${v} STAT`},
+    {w:10,type:'buff',id:'hunter_seal',name:"Hunter's Seal",desc:'Unlocks a shop item',icon:'🔮',val:()=>null,display:()=>'UNLOCK'},
+    {w:5,type:'curse',id:'shadow_bind',name:'Shadow Bind',desc:'One quest gives 0 XP tomorrow',icon:'⛓',refuseCost:65,val:()=>null,display:()=>'CURSE'},
+  ]
+};
+function weightedPick(arr){let r=Math.random()*arr.reduce((s,i)=>s+i.w,0);for(const i of arr){r-=i.w;if(r<=0)return i;}return arr[arr.length-1];}
+function openBox(rarity){
+  const item=weightedPick(BOX_LOOT[rarity]);const val=item.val();
+  if(item.type==='curse'){S.pendingCurse={...item};showCurseOverlay(item);return;}
+  applyBoxDrop(item,val);showBoxOverlay(rarity,item,val);
+}
+function applyBoxDrop(item,val){
+  if(item.type==='gold'){S.gold=(S.gold||0)+val;save();}
+  else if(item.type==='xp'){addXp(val);}
+  else if(item.type==='stat'){const keys=Object.keys(S.attrs);for(let i=0;i<(val||1);i++){const k=keys[Math.floor(Math.random()*keys.length)];S.attrs[k]++;}save();}
+  else if(item.type==='buff'){S.inventory=[...(S.inventory||[]),{id:item.id,name:item.name,desc:item.desc,icon:item.icon}];save();}
+}
+function showBoxOverlay(rarity,item,val){
+  document.getElementById('box-rarity-lbl').textContent=rarity.toUpperCase()+' BOX';
+  document.getElementById('box-icon-el').textContent=item.icon;
+  document.getElementById('box-item-name').textContent=item.name;
+  document.getElementById('box-item-desc').textContent=item.desc;
+  const valEl=document.getElementById('box-item-val');
+  valEl.textContent=item.display(val);
+  valEl.style.color=item.type==='gold'?'var(--amber)':item.type==='xp'?'var(--pd)':'var(--tl)';
+  document.getElementById('box-overlay').classList.add('on');
+}
+function closeBox(){document.getElementById('box-overlay').classList.remove('on');render();}
+function showCurseOverlay(item){
+  document.getElementById('curse-icon-el').textContent=item.icon;
+  document.getElementById('curse-name-el').textContent=item.name;
+  document.getElementById('curse-desc-el').textContent=item.desc;
+  document.getElementById('curse-cost-el').textContent=`Refuse for ${item.refuseCost} gold?`;
+  document.getElementById('curse-refuse-btn').textContent=`REFUSE (${item.refuseCost}G)`;
+  document.getElementById('curse-overlay').classList.add('on');
+}
+function acceptCurse(){
+  document.getElementById('curse-overlay').classList.remove('on');
+  const c=S.pendingCurse;
+  S.curses=[...(S.curses||[]),{id:c.id,name:c.name,desc:c.desc,icon:c.icon}];
+  // shadow_bind: pick a random main quest to give 0 XP tomorrow
+  if(c.id==='shadow_bind'){
+    const mainIds=QUESTS.filter(q=>!q.opt).map(q=>q.id);
+    S.shadowBoundQuest=mainIds[Math.floor(Math.random()*mainIds.length)];
+    const boundQ=QUESTS.find(q=>q.id===S.shadowBoundQuest);
+    setTimeout(()=>toast(`<span style='color:var(--red)'>Shadow Bind!</span> "${boundQ?.name}" gives 0 XP today.`),500);
+  }
+  S.pendingCurse=null;save();render();
+  toast("<span style='color:var(--red)'>Curse accepted.</span>");
+}
+function refuseCurse(){
+  const cost=S.pendingCurse.refuseCost;
+  if((S.gold||0)<cost){toast(`Not enough gold! Need ${cost}G.`);return;}
+  document.getElementById('curse-overlay').classList.remove('on');
+  S.gold-=cost;S.pendingCurse=null;save();render();
+  toast("<span class='txp'>Curse refused.</span> Gold spent.");
+}
+function buyItem(id){
+  const item=SHOP_ITEMS.find(i=>i.id===id);if(!item)return;
+  if((S.ownedItems||[]).includes(id)){toast('Already owned!');return;}
+  if((S.gold||0)<item.cost){toast(`Need ${item.cost}G to buy this.`);return;}
+  S.gold-=item.cost;S.ownedItems=[...(S.ownedItems||[]),id];
+  // Monarch's Decree: give one use on purchase
+  if(id==='monarchs_decree')S.monarchsDecreeAvailable=true;
+  save();render();
+  toast(`<span class='txp'>${item.name}</span> purchased!`);vibrate([20,10,50]);
+}
+function useItem(id){
+  const idx=(S.inventory||[]).findIndex(i=>i.id===id);if(idx===-1)return;
+  const item=S.inventory[idx];S.inventory.splice(idx,1);
+  if(id==='shadow_cloak'){S.shadowCloak=true;toast("<span class='txp'>Shadow Cloak active!</span> Next penalty: half XP lost.");}
+  else if(id==='iron_will_shard'){S.ironWill=true;toast("<span class='txp'>Iron Will Shard active!</span> Next missed day: streak survives.");}
+  else if(id==='shadow_extraction'){S.shadowExtraction=true;toast("<span class='txp'>Shadow Extraction active!</span> Double XP today!");}
+  else if(id==='hunter_seal'){
+    // Unlock a random unowned shop item at half price
+    const unowned=SHOP_ITEMS.filter(i=>!(S.ownedItems||[]).includes(i.id));
+    if(unowned.length>0){
+      const pick=unowned[Math.floor(Math.random()*unowned.length)];
+      S.ownedItems=[...(S.ownedItems||[]),pick.id];
+      toast(`<span class='txp'>Hunter's Seal!</span> ${pick.name} unlocked!`);
+    } else {toast("All shop items already owned!");}
+  }
+  save();render();
+}
+
+// expose state globally for Firebase module — always same reference
+window.S=S;
+function save(){
+  S._savedAt=Date.now();
+  try{localStorage.setItem('sl_v5',JSON.stringify(S));}catch(e){}
+  // Cloud sync — debounced
+  clearTimeout(save._t);
+  save._t=setTimeout(()=>{ window._fbSave&&window._fbSave(S); },800);
+}
+function load(){
+  try{
+    const d=localStorage.getItem('sl_v5');
+    if(d){
+      const p=JSON.parse(d);
+      // Merge into existing S object so window.S reference stays valid
+      Object.assign(S,p);
+    }
+  }catch(e){}
+  // dateGuard is called separately after load() at startup
+}
+
+// ─── Sync UI ──────────────────────────────────────────────────────────────────
+window._updateSyncUI=function(user){
+  const dot=document.getElementById('syncDot');
+  const lbl=document.getElementById('syncLabel');
+  const btn=document.getElementById('syncBtn');
+  if(user){
+    dot.className='sync-dot online';
+    lbl.textContent='Synced · '+(user.displayName||user.email||'').split(' ')[0];
+    btn.textContent='☁️ ACCOUNT';
+    btn.className='sync-btn';
+  }else{
+    dot.className='sync-dot';
+    lbl.textContent='Local only — tap to sync';
+    btn.textContent='☁️ SYNC';
+    btn.className='sync-btn login';
+  }
+};
+
+function openSyncModal(){
+  const modal=document.getElementById('syncModal');
+  const content=document.getElementById('syncModalContent');
+  const user=window._currentUser||null;
+  // Check if logged in via FB (exposed by module)
+  const isLoggedIn=document.getElementById('syncDot').classList.contains('online');
+  if(isLoggedIn){
+    // Show account info + sign out
+    const lbl=document.getElementById('syncLabel').textContent;
+    content.innerHTML=`
+      <div class="sync-modal-icon">☁️</div>
+      <div class="sync-modal-t">CLOUD SYNC ACTIVE</div>
+      <div class="sync-user-card">
+        <div style="font-size:28px">👤</div>
+        <div class="sync-user-info">
+          <div class="sync-user-name">${lbl.replace('Synced · ','')}</div>
+          <div class="sync-user-email">Progress syncs across all devices</div>
+        </div>
+      </div>
+      <div class="sync-modal-d">Your data is saved in the cloud and syncs in real-time between PC and mobile.</div>
+      <div class="sync-modal-btns">
+        <button class="sync-modal-btn" style="border-color:var(--red);color:var(--red)" onclick="window._fbSignOut&&window._fbSignOut();closeSyncModal()">SIGN OUT</button>
+        <button class="sync-modal-btn cancel" onclick="closeSyncModal()">CLOSE</button>
+      </div>`;
+  }else{
+    content.innerHTML=`
+      <div class="sync-modal-icon">☁️</div>
+      <div class="sync-modal-t">CLOUD SYNC</div>
+      <div class="sync-modal-d">Sign in with Google to sync your progress between phone and PC in real-time.<br><br>Your existing local data will be uploaded automatically.</div>
+      <div class="sync-modal-btns">
+        <button class="sync-modal-btn google" onclick="window._fbSignIn&&window._fbSignIn();closeSyncModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          SIGN IN WITH GOOGLE
+        </button>
+        <button class="sync-modal-btn cancel" onclick="closeSyncModal()">CANCEL</button>
+      </div>`;
+  }
+  modal.classList.add('open');
+}
+function closeSyncModal(){document.getElementById('syncModal').classList.remove('open');}
+
+// Show syncing indicator on save
+const _origSave=save;
+window.addEventListener('fbSaving',()=>{
+  const dot=document.getElementById('syncDot');
+  if(dot.classList.contains('online')){dot.classList.add('syncing');}
+  setTimeout(()=>dot.classList.remove('syncing'),1500);
+});
+
+// ─── Date Guard ───────────────────────────────────────────────────────────────
+function todayStr(){const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;}
+function isSunday(){return new Date().getDay()===0;}
+function getWeekKey(d){
+  // Use Monday-based week key so Mon-Sun are in the same week
+  const t=new Date(d instanceof Date?d:d+'T12:00:00');
+  const day=t.getDay(); // 0=Sun,1=Mon,...6=Sat
+  const diffToMon=day===0?-6:1-day; // days back to Monday
+  t.setDate(t.getDate()+diffToMon);
+  return `${t.getFullYear()}-${t.getMonth()}-${t.getDate()}`;
+}
+function dateGuard(){
+  const today=todayStr();
+  if(S.lastDate&&S.lastDate!==today){
+    S.checked={};S.emgActive=false;
+    const lw=getWeekKey(S.lastDate),tw=getWeekKey(new Date());
+    if(lw!==tw)S.bossChecked={};
+    // New week = reset dungeon (every Monday)
+    const lastMon=getMondayKey(S.lastDate),thisMon=getMondayKey(new Date());
+    if(lastMon!==thisMon){S.dungeonChecked={};}
+    toast('<span class="txp">New Day!</span> Arise, Hunter.');
+  }
+  S.lastDate=today;save();
+}
+function getMondayKey(d){return getWeekKey(d);}
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+function applyTheme(){document.body.classList.toggle('theme-red',S.theme==='red');}
+function toggleTheme(){S.theme=S.theme==='red'?'default':'red';applyTheme();save();toast(S.theme==='red'?"<span class='txp'>Monarch Mode</span>":"<span class='txp'>Shadow Mode</span>");}
+
+// ─── Quote ────────────────────────────────────────────────────────────────────
+function nextQuote(){
+  S.quoteIdx=((S.quoteIdx||0)+1)%QUOTES.length;
+  document.getElementById('sys-quote').textContent=QUOTES[S.quoteIdx];
+  save();
+}
+function setDailyQuote(){
+  const idx=S.quoteIdx||Math.floor(Math.random()*QUOTES.length);
+  S.quoteIdx=idx;
+  document.getElementById('sys-quote').textContent=QUOTES[idx];
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+let tt,toastQueue=[];
+function toast(html){
+  // If level up overlay is visible, queue the toast for after it closes
+  if(document.getElementById('lv-overlay')?.classList.contains('on')){
+    toastQueue.push(html);return;
+  }
+  const el=document.getElementById('toast');
+  el.innerHTML=html;el.classList.add('on');
+  clearTimeout(tt);tt=setTimeout(()=>{el.classList.remove('on');if(toastQueue.length)setTimeout(()=>toast(toastQueue.shift()),400);},3200);
+}
+window.toast=toast;
+
+// ─── Haptic ───────────────────────────────────────────────────────────────────
+function vibrate(p){try{navigator.vibrate&&navigator.vibrate(p);}catch(e){}}
+
+// ─── Level Up Overlay ─────────────────────────────────────────────────────────
+function showLvOverlay(level){
+  const rk=rankObj(level);
+  document.getElementById('lv-ov-rank').textContent=GR(level);
+  document.getElementById('lv-ov-rank').style.color=rk.c;
+  document.getElementById('lv-ov-rank').style.textShadow=`0 0 60px ${rk.c}`;
+  document.getElementById('lv-ov-num').textContent='LEVEL '+level;
+  document.getElementById('lv-ov-title').textContent=GT(level);
+  // Spawn particles
+  const pc=document.getElementById('lvParticles');
+  pc.innerHTML='';
+  const colors=['#7F77DD','#5DCAA5','#EF9F27','#E24B4A','#AFA9EC'];
+  for(let i=0;i<40;i++){
+    const p=document.createElement('div');p.className='lv-p';
+    p.style.left=Math.random()*100+'%';
+    p.style.height=(30+Math.random()*60)+'px';
+    p.style.background=colors[Math.floor(Math.random()*colors.length)];
+    p.style.animationDuration=(1.5+Math.random()*2)+'s';
+    p.style.animationDelay=(Math.random()*.8)+'s';
+    pc.appendChild(p);
+  }
+  document.getElementById('lv-overlay').classList.add('on');
+}
+function closeLvOverlay(){
+  document.getElementById('lv-overlay').classList.remove('on');
+  // Drain any queued toasts
+  if(toastQueue.length)setTimeout(()=>toast(toastQueue.shift()),400);
+}
+
+// ─── XP / Leveling ────────────────────────────────────────────────────────────
+function addXp(n){
+  S.totalXp+=n;S.currentXp+=n;
+  while(S.currentXp>=XPN(S.level)){
+    S.currentXp-=XPN(S.level);S.level++;S.ap+=5;
+    // Record first rank date
+    const r=GR(S.level);
+    if(!S.records.firstRankDate[r])S.records.firstRankDate[r]=todayStr();
+    const f=document.getElementById('lv-flash');
+    f.classList.add('on');setTimeout(()=>f.classList.remove('on'),600);
+    vibrate([50,30,100,30,200,30,300]);
+    const lvl=S.level;
+    setTimeout(()=>showLvOverlay(lvl),400);
+  }
+  checkTitles();
+  save();render();
+}
+
+function calcXP(){
+  const allQ=[...QUESTS,...(S.customQuests||[])];
+  // shadow_bind curse: one random quest gives 0 XP (stored as cursed quest id)
+  const hasBind=(S.curses||[]).some(c=>c.id==='shadow_bind');
+  const boundQuestId=S.shadowBoundQuest||null;
+  const qxp=allQ.reduce((s,q)=>{
+    if(!S.checked[q.id])return s;
+    if(hasBind&&boundQuestId&&q.id===boundQuestId)return s; // 0 XP for bound quest
+    return s+q.xp;
+  },0);
+  const exp=EMERGENCY.reduce((s,q)=>S.checked[q.id]?s+q.xp:s,0);
+  const bxp=isSunday()&&S.bossChecked[BOSS_QUEST.id]?BOSS_QUEST.xp:0;
+  // Hunter's Focus (shop): study counts at 45min — +5 bonus XP if owned and checked
+  const focusBonus=(S.ownedItems||[]).includes('hunters_focus')&&S.checked['study']?5:0;
+  const hasCurse=(S.curses||[]).some(c=>c.id==='weakening');
+  const mult=hasCurse?0.9:1;
+  const finalMult=(S.shadowExtraction?2:1)*mult;
+  return Math.round((qxp+exp+bxp+focusBonus)*finalMult);
+}
+// Dungeon XP is calculated separately and only added at claim time
+function calcDungeonXP(){
+  return DUNGEON_QUESTS.reduce((s,q)=>{
+    const prog=getDungeonProgress(q.id);
+    const done=S.dungeonChecked[q.id]||(prog&&prog.pct===100);
+    return done?s+q.xp:s;
+  },0);
+}
+
+function claimDay(){
+  const e=calcXP();
+  const dxp=calcDungeonXP();
+  if(e===0){toast('Complete at least one quest first!');return;}
+  const allMain=QUESTS.filter(q=>!q.opt&&!(q.id==='workout'&&isWorkoutLocked())).every(q=>S.checked[q.id]);
+  if(!allMain){toast('Complete all <span class="txp">main quests</span> first!');return;}
+  S.streak++;
+  S.records=S.records||{bestStreak:0,bestDayXp:0,firstRankDate:{}};
+  if(S.streak>S.records.bestStreak)S.records.bestStreak=S.streak;
+  let bonus=30,mx=0,mt='';
+  if(S.streak===30){mx=200;mt='Master of Self';}
+  else if(S.streak===60){mx=300;mt='Iron Will';}
+  else if(S.streak===90){mx=500;mt='Shadow Monarch';}
+  else if([7,14,21,28,35,42,49,56,63,70,77,84].includes(S.streak)){mx=50;}
+  const total=e+dxp+bonus+mx;
+  if(total>S.records.bestDayXp)S.records.bestDayXp=total;
+  S.totalCompleted=S.totalCompleted||{};
+  [...QUESTS,...(S.customQuests||[]),...EMERGENCY].forEach(q=>{if(S.checked[q.id]){S.totalCompleted[q.id]=(S.totalCompleted[q.id]||0)+1;}});
+  const allDungeonDone=DUNGEON_QUESTS.every(q=>S.dungeonChecked[q.id]||(getDungeonProgress(q.id)&&getDungeonProgress(q.id).pct===100));
+  if(allDungeonDone){S.dungeonsCleared=(S.dungeonsCleared||0)+1;S.dungeonChecked={};}
+  const mainTotal=QUESTS.filter(q=>!q.opt&&!(q.id==='workout'&&isWorkoutLocked())).length;
+  const mainDone=QUESTS.filter(q=>!q.opt&&!(q.id==='workout'&&isWorkoutLocked())&&S.checked[q.id]).length;
+  const pct=Math.round(mainDone/mainTotal*100);
+  S.history=S.history||[];
+  S.history.unshift({date:todayStr(),xp:total,pct});
+  if(S.history.length>70)S.history=S.history.slice(0,70);
+  S.statHistory=S.statHistory||[];
+  S.statHistory.push({date:todayStr(),attrs:{...S.attrs}});
+  if(S.statHistory.length>14)S.statHistory=S.statHistory.slice(-14);
+  if(mx>0){S.gold=(S.gold||0)+GOLD_STREAK;}
+  // Clear weakening curse after use
+  S.curses=(S.curses||[]).filter(c=>c.id!=='weakening');
+  // Clear shadow_bind curse after use
+  S.curses=(S.curses||[]).filter(c=>c.id!=='shadow_bind');
+  S.shadowBoundQuest=null;
+  // Clear Shadow Extraction after use
+  S.shadowExtraction=false;
+  S.checked={};S.emgActive=false;
+  // Km tracker reset
+  S.kmToday=0;
+  vibrate([30,20,80,20,150]);
+  addXp(total); // do level-up logic first
+  // Show XP toast AFTER addXp so it appears on top of any level-up flash
+  setTimeout(()=>toast(`<span class='txp'>+${total} XP</span> acquired!<br><small style='color:var(--t3)'>${e} quest${dxp>0?' + '+dxp+' dungeon':''} + ${bonus} daily${mx?' + '+mx+' milestone':''}</small>`),100);
+  if(mt)setTimeout(()=>toast(`Title unlocked: <span class='txp'>${mt}</span>`),3800);
+  if(mx>0)setTimeout(()=>openBox('legendary'),2200);
+}
+
+// ─── Penalty ──────────────────────────────────────────────────────────────────
+function openConfirm(){document.getElementById('confirmModal').classList.add('open');}
+function closeConfirm(){document.getElementById('confirmModal').classList.remove('open');}
+function confirmPenalty(){
+  closeConfirm();
+  // Iron Will shard (inventory item): streak survives
+  if(S.ironWill){
+    S.ironWill=false;
+    toast("<span class='txp'>Iron Will Shard!</span> Streak protected.");
+    S.checked={};save();render();return;
+  }
+  // Monarch's Decree (shop item): one day off, streak survives — consume it
+  if((S.ownedItems||[]).includes('monarchs_decree')&&S.monarchsDecreeAvailable){
+    S.monarchsDecreeAvailable=false;
+    toast("<span class='txp'>Monarch's Decree!</span> Day off granted. Streak intact.");
+    S.checked={};save();render();return;
+  }
+  const lost=calcXP();
+  // Shadow Armor (shop passive): always halves XP loss if owned
+  const hasShadowArmor=(S.ownedItems||[]).includes('shadow_armor');
+  // Shadow Cloak (inventory buff): also halves XP loss, consumed on use
+  const actualLost=(S.shadowCloak||hasShadowArmor)?Math.floor(lost/2):lost;
+  if(S.shadowCloak){S.shadowCloak=false;toast("<span class='txp'>Shadow Cloak</span> absorbed half the damage!");}
+  else if(hasShadowArmor){toast("<span class='txp'>Shadow Armor</span> reduced the penalty by 50%!");}
+  // Deduct from currentXp first, then totalXp — don't allow either below 0
+  S.currentXp=Math.max(0,S.currentXp-actualLost);
+  S.totalXp=Math.max(0,S.totalXp-actualLost);
+  S.streak=0;S.checked={};vibrate([200,50,200]);
+  toast(`<span style='color:var(--red)'>Penalty triggered.</span> -${actualLost} XP. Streak: 0.`);
+  save();render();
+}
+
+// ─── Titles ───────────────────────────────────────────────────────────────────
+function checkTitles(){
+  S.unlockedTitles=S.unlockedTitles||[];
+  TITLES.forEach(t=>{
+    if(!S.unlockedTitles.includes(t.id)&&t.check(S)){
+      S.unlockedTitles.push(t.id);
+      setTimeout(()=>toast(`🏆 Title unlocked: <span class='txp'>${t.name}</span>`),600);
+    }
+  });
+}
+function equipTitle(id){
+  S.activeTitle=S.activeTitle===id?'':id;
+  save();render();
+}
+
+// ─── Shadow Army ─────────────────────────────────────────────────────────────
+function isShadowUnlocked(sh){
+  if(sh.unlockLvl&&S.level>=sh.unlockLvl)return true;
+  // Use bestStreak so shadows stay unlocked even if current streak is broken
+  const bestStreak=Math.max(S.streak,S.records?.bestStreak||0);
+  if(sh.unlockStreak&&bestStreak>=sh.unlockStreak)return true;
+  return false;
+}
+
+// ─── Emergency ────────────────────────────────────────────────────────────────
+function toggleEmergency(){
+  S.emgActive=!S.emgActive;
+  if(!S.emgActive)EMERGENCY.forEach(q=>{S.checked[q.id]=false;});
+  save();render();
+  toast(S.emgActive?"<span class='txp'>Emergency Quests ενεργά!</span>":"<span style='color:var(--t2)'>Emergency Quests off.</span>");
+}
+
+// ─── Toggle Quest ─────────────────────────────────────────────────────────────
+function toggleQ(id){
+  if(id==='workout'&&isWorkoutLocked()){toast('Rest Day — Workout locked on <span class="txp">Sunday</span>!');vibrate([50,20,50]);return;}
+  const allQ=[...QUESTS,...(S.customQuests||[])];
+  const q=allQ.find(q=>q.id===id);
+  if(q&&q.req&&S.attrs[q.req.key]<q.req.val){toast(`Requires <span class="txp">${q.req.key} ${q.req.val}</span>!`);vibrate([50,20,50]);return;}
+  S.checked[id]=!S.checked[id];
+  if(S.checked[id]){
+    vibrate([10,10,30]);
+    const g=GOLD_QUEST[id]||0;if(g){S.gold=(S.gold||0)+g;save();}
+    setTimeout(()=>{if(Math.random()<0.08)openBox('common');},500);
+  }
+  save();render();
+}
+function toggleBoss(id){
+  if(!isSunday()){toast('Boss Quest only available on <span class="txp">Sunday</span>!');return;}
+  if(S.bossChecked[id]){toast('Boss already defeated!');return;}
+  S.bossChecked[id]=true;
+  vibrate([10,10,50,10,80]);
+  S.gold=(S.gold||0)+GOLD_BOSS;save();
+  toast(`<span class='txp'>BOSS DEFEATED!</span> +${GOLD_BOSS} GOLD`);
+  setTimeout(()=>openBox('rare'),1500);
+  save();render();
+}
+// ─── Dungeon Progress ─────────────────────────────────────────────────────────
+function getDungeonProgress(qid){
+  // Returns {pct, label} for quests with auto-progress, null for simple checkboxes
+  if(qid==='dg1'){// 100 Push-ups — workout daily = 50%
+    const base=S.checked['workout']?50:0;
+    const done=S.dungeonChecked['dg1']?100:base;
+    return {pct:done,label:`${done}/100 push-ups`};
+  }
+  if(qid==='dg2'){// 2hr Study — daily 1hr study = 50%
+    const base=S.checked['study']?50:0;
+    const done=S.dungeonChecked['dg2']?100:base;
+    return {pct:done,label:`${done}/120 min`};
+  }
+  if(qid==='dg3'){// 10km — boss 5km = 50%, km tracker counts
+    const kmDone=Math.min(10,S.kmToday||0);
+    const bossDone=S.bossChecked&&S.bossChecked['boss_weekly'];
+    const basePct=Math.max(bossDone?50:0,Math.round(kmDone/10*100));
+    const done=S.dungeonChecked['dg3']?100:Math.min(100,basePct);
+    return {pct:done,label:`${(S.kmToday||0).toFixed(1)}/${10}km`};
+  }
+  if(qid==='dg4'){// Cold Bath 10min — daily cold shower = 100%
+    const base=S.checked['shower']?100:0;
+    const done=S.dungeonChecked['dg4']?100:base;
+    return {pct:done,label:done===100?'Done':'0/10 min'};
+  }
+  return null;
+}
+
+function toggleDungeon(id){
+  const prog=getDungeonProgress(id);
+  // If auto-progress is 100%, it's already done — just toggle off
+  if(prog&&prog.pct===100&&!S.dungeonChecked[id]){
+    S.dungeonChecked[id]=true;
+  } else {
+    S.dungeonChecked[id]=!S.dungeonChecked[id];
+  }
+  if(S.dungeonChecked[id])vibrate([10,10,30]);
+  save();render();
+}
+
+// ─── AP ───────────────────────────────────────────────────────────────────────
+function assignAP(key){
+  if(S.ap<=0){toast('No Ability Points available.');return;}
+  S.ap--;S.attrs[key]++;vibrate([20,10,40]);save();render();
+}
+
+// ─── Custom Quests ────────────────────────────────────────────────────────────
+function addCustomQuest(){
+  const n=document.getElementById('cq-name').value.trim();
+  const x=parseInt(document.getElementById('cq-xp').value)||10;
+  if(!n){toast('Enter a quest name!');return;}
+  S.customQuests=S.customQuests||[];
+  S.customQuests.push({id:'cq_'+Date.now(),name:n,tags:'Custom',xp:Math.min(100,Math.max(1,x)),opt:true,timer:null,req:null,diff:'easy'});
+  document.getElementById('cq-name').value='';document.getElementById('cq-xp').value='';
+  save();render();toast(`Quest <span class="txp">${n}</span> added!`);
+}
+function deleteCustomQuest(id){
+  const q=(S.customQuests||[]).find(q=>q.id===id);
+  if(!q)return;
+  if(!confirm(`Delete quest "${q.name}"?`))return;
+  S.customQuests=(S.customQuests||[]).filter(q=>q.id!==id);
+  delete S.checked[id];save();render();
+}
+
+// ─── Consistency Score ────────────────────────────────────────────────────────
+function calcConsistency(){
+  const h=S.history||[];
+  if(h.length===0)return 0;
+  // Count how many of the last 30 CALENDAR days had a claim
+  const doneSet=new Set(h.map(d=>d.date));
+  const today=new Date();
+  let daysWithClaim=0;
+  for(let i=1;i<=30;i++){
+    const d=new Date(today);d.setDate(today.getDate()-i);
+    const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if(doneSet.has(ds))daysWithClaim++;
+  }
+  return Math.round((daysWithClaim/30)*100);
+}
+
+// ─── Tab Navigation ───────────────────────────────────────────────────────────
+function goTab(name,idx){
+  document.querySelectorAll('.tv').forEach(t=>t.classList.remove('on'));
+  document.getElementById('tv-'+name).classList.add('on');
+  document.querySelectorAll('.ni').forEach((n,i)=>n.classList.toggle('on',i===idx));
+  document.getElementById('content').scrollTop=0;
+  if(name==='stats')drawChart();
+  if(name==='history'){renderHistory();renderHeatmap();renderPR();}
+}
+
+// ─── Timer ────────────────────────────────────────────────────────────────────
+let timerInterval=null,timerTotal=0,timerLeft=0,timerRunning=false,timerStartTs=0;
+function openTimer(name,minutes){
+  timerTotal=minutes*60;timerLeft=timerTotal;timerRunning=false;timerStartTs=0;
+  document.getElementById('timerName').textContent=name;
+  document.getElementById('timerStartBtn').textContent='START';
+  updateTimerDisplay();
+  document.getElementById('timerModal').classList.add('open');
+}
+function timerClose(){clearInterval(timerInterval);timerRunning=false;timerStartTs=0;document.getElementById('timerModal').classList.remove('open');}
+function timerToggle(){
+  if(timerRunning){
+    // Pause: save remaining time
+    clearInterval(timerInterval);timerRunning=false;
+    document.getElementById('timerStartBtn').textContent='RESUME';
+  }else{
+    if(timerLeft<=0)timerLeft=timerTotal;
+    timerRunning=true;
+    timerStartTs=Date.now();
+    const snapshotLeft=timerLeft;
+    document.getElementById('timerStartBtn').textContent='PAUSE';
+    timerInterval=setInterval(()=>{
+      const elapsed=Math.floor((Date.now()-timerStartTs)/1000);
+      timerLeft=Math.max(0,snapshotLeft-elapsed);
+      updateTimerDisplay();
+      if(timerLeft<=0){
+        clearInterval(timerInterval);timerRunning=false;
+        document.getElementById('timerStartBtn').textContent='DONE';
+        vibrate([100,50,200,50,300]);
+        toast('<span class="txp">Timer complete!</span> Quest done, Hunter.');
+      }
+    },1000);
+  }
+}
+function updateTimerDisplay(){
+  const m=Math.floor(timerLeft/60),s=timerLeft%60;
+  document.getElementById('timerDsp').textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  document.getElementById('timerProgF').style.width=(timerTotal>0?timerLeft/timerTotal*100:100)+'%';
+}
+
+// ─── Stat Chart ───────────────────────────────────────────────────────────────
+function drawChart(){
+  const canvas=document.getElementById('statChart');if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.parentElement.clientWidth-28,h=100;
+  canvas.width=w*dpr;canvas.height=h*dpr;
+  canvas.style.width=w+'px';canvas.style.height=h+'px';
+  ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);
+  const hist=S.statHistory||[];
+  if(hist.length<2){
+    ctx.fillStyle='rgba(62,60,96,0.8)';ctx.font='11px Share Tech Mono';ctx.textAlign='center';
+    ctx.fillText('Complete more days to see history',w/2,h/2);return;
+  }
+  const colors={STR:'#D85A30',VIT:'#1D9E75',AGI:'#378ADD',INT:'#7F77DD',SEN:'#EF9F27'};
+  const keys=Object.keys(colors);
+  const allVals=hist.flatMap(h=>keys.map(k=>h.attrs[k]||0));
+  const mn=Math.max(0,Math.min(...allVals)-2),mx=Math.max(...allVals)+2;
+  const pad={l:6,r:6,t:6,b:6};const cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;
+  keys.forEach(k=>{
+    ctx.beginPath();ctx.strokeStyle=colors[k];ctx.lineWidth=1.5;ctx.globalAlpha=0.85;
+    hist.forEach((pt,i)=>{
+      const x=pad.l+(i/(hist.length-1))*cw;
+      const y=pad.t+ch-(((pt.attrs[k]||0)-mn)/(mx-mn))*ch;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    const lx=pad.l+cw,ly=pad.t+ch-(((hist[hist.length-1].attrs[k]||0)-mn)/(mx-mn))*ch;
+    ctx.fillStyle=colors[k];ctx.globalAlpha=1;ctx.beginPath();ctx.arc(lx,ly,3,0,Math.PI*2);ctx.fill();
+  });
+  ctx.globalAlpha=1;
+  const legendEl=document.getElementById('sc-legend');
+  if(legendEl)legendEl.innerHTML=keys.map(k=>`<div class="sc-leg-item"><div class="sc-leg-dot" style="background:${colors[k]}"></div>${k}</div>`).join('');
+}
+
+// ─── Heatmap ─────────────────────────────────────────────────────────────────
+function renderHeatmap(){
+  const el=document.getElementById('hm-grid');if(!el)return;
+  const today=new Date();
+  const hist=S.history||[];
+  const doneSet=new Set(hist.map(h=>h.date));
+  const todayS=todayStr();
+  const cells=[];
+  for(let i=69;i>=0;i--){
+    const d=new Date(today);d.setDate(today.getDate()-i);
+    const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const isToday=ds===todayS;
+    const done=doneSet.has(ds);
+    const past=d<today&&!isToday;
+    const cls=done?'hm-cell done':(past?'hm-cell miss':'hm-cell')+(isToday?' today':'');
+    cells.push(`<div class="${cls}" title="${ds}"></div>`);
+  }
+  el.innerHTML=cells.join('');
+  // Fix: count only days within the 70-day window, not all history
+  const windowDates=new Set(cells.map((_,i)=>{
+    const d=new Date(today);d.setDate(today.getDate()-(69-i));
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }));
+  const doneInWindow=[...doneSet].filter(d=>windowDates.has(d)).length;
+  const pastDays=69; // today doesn't count as missed
+  const donePct=Math.round(doneInWindow/pastDays*100);
+  const hmRate=document.getElementById('hm-rate');
+  if(hmRate)hmRate.textContent=`${doneInWindow}/${pastDays} days · ${donePct}%`;
+}
+
+// ─── Personal Records ─────────────────────────────────────────────────────────
+function renderPR(){
+  const el=document.getElementById('pr-grid');if(!el)return;
+  const h=S.history||[];
+  const totalXpEarned=h.reduce((s,d)=>s+d.xp,0);
+  const records=S.records||{bestStreak:0,bestDayXp:0};
+  const totalWorkouts=S.totalCompleted&&S.totalCompleted['workout']||0;
+  const totalStudy=S.totalCompleted&&S.totalCompleted['study']||0;
+  el.innerHTML=`
+    <div class="pr-card"><div class="pr-lbl">BEST STREAK</div><div class="pr-val">${records.bestStreak}</div><div class="pr-sub">days</div></div>
+    <div class="pr-card"><div class="pr-lbl">BEST DAY XP</div><div class="pr-val">${records.bestDayXp}</div><div class="pr-sub">in a single day</div></div>
+    <div class="pr-card"><div class="pr-lbl">TOTAL XP</div><div class="pr-val">${S.totalXp||0}</div><div class="pr-sub">lifetime</div></div>
+    <div class="pr-card"><div class="pr-lbl">DAYS CLEARED</div><div class="pr-val">${h.length}</div><div class="pr-sub">of all time</div></div>
+    <div class="pr-card"><div class="pr-lbl">WORKOUTS</div><div class="pr-val">${totalWorkouts}</div><div class="pr-sub">completed</div></div>
+    <div class="pr-card"><div class="pr-lbl">STUDY SESSIONS</div><div class="pr-val">${totalStudy}</div><div class="pr-sub">completed</div></div>
+  `;
+}
+
+// ─── History ─────────────────────────────────────────────────────────────────
+function renderHistory(){
+  const el=document.getElementById('hist-list');if(!el)return;
+  const h=S.history||[];
+  if(h.length===0){el.innerHTML='<div class="hist-empty">No history yet.<br>Complete your first day to start tracking.</div>';return;}
+  el.innerHTML=h.slice(0,30).map(d=>{
+    const fmt=new Date(d.date+'T12:00:00').toLocaleDateString('el',{weekday:'short',day:'numeric',month:'short'});
+    return `<div class="hist-day">
+      <div class="hist-date">${fmt}</div>
+      <div class="hist-row"><span class="hist-xp">+${d.xp} XP</span><span class="hist-pct">${d.pct}% complete</span></div>
+      <div class="hist-bar"><div class="hist-bar-f" style="width:${d.pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ─── Weekly ───────────────────────────────────────────────────────────────────
+function renderWeekly(){
+  const days=['Κυρ','Δευ','Τρι','Τετ','Πεμ','Παρ','Σαβ'];
+  const today=new Date();const todayDay=today.getDay();
+  const week=[];
+  for(let i=0;i<7;i++){
+    const d=new Date(today);d.setDate(today.getDate()-todayDay+i);
+    const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    week.push({label:days[i],date:ds,isToday:i===todayDay});
+  }
+  const hist=S.history||[];
+  const completedDays=hist.map(h=>h.date);
+  const doneDays=week.filter(w=>completedDays.includes(w.date)).length;
+  document.getElementById('week-rate').textContent=`${doneDays}/7`;
+  document.getElementById('week-days').innerHTML=week.map(w=>`
+    <div class="wd ${completedDays.includes(w.date)?'done':''} ${w.isToday?'today':''}">
+      <div class="wd-day">${w.label}</div><div class="wd-dot"></div>
+    </div>`).join('');
+  const rate=Math.round(doneDays/7*100);
+  document.getElementById('week-summary').textContent=
+    rate===100?'Perfect week! 🔥':rate>=70?`Strong week — ${doneDays}/7 days`:
+    rate>=40?`Keep pushing — ${7-doneDays} days left`:`${doneDays} day${doneDays!==1?'s':''} done this week`;
+}
+
+// ─── Export/Import ────────────────────────────────────────────────────────────
+function exportData(){
+  const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`system-backup-${todayStr()}.json`;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  toast('<span class="txp">Backup exported.</span> Includes all data.');
+}
+
+// ─── Km Tracker ───────────────────────────────────────────────────────────────
+function addKm(){
+  const inp=document.getElementById('km-input');
+  const val=Math.min(42,parseFloat(inp.value)||0); // cap at marathon distance
+  if(val<=0){toast('Enter a valid distance!');return;}
+  S.kmToday=(S.kmToday||0)+val;
+  inp.value='';save();
+  const prev=S.kmToday-val;
+  if(prev<5&&S.kmToday>=5){
+    toast('<span class="txp">5km reached!</span> Boss quest progress updated!');
+    vibrate([50,30,100]);
+  }
+  if(prev<10&&S.kmToday>=10){
+    toast('<span class="txp">10km reached!</span> Weekly dungeon quest complete!');
+    vibrate([50,30,100,30,200]);
+    S.dungeonChecked['dg3']=true;
+  }
+  save();render();
+}
+
+// ─── Push Notifications ───────────────────────────────────────────────────────
+async function requestNotificationPermission(){
+  if(!('Notification' in window)){return;}
+  if(Notification.permission==='default'){
+    const perm=await Notification.requestPermission();
+    if(perm==='granted')toast('<span class="txp">Notifications enabled!</span>');
+  }
+}
+function scheduleReminderCheck(){
+  // Check at 21:00 if claim not done today
+  const now=new Date();
+  const tonight=new Date(now);
+  tonight.setHours(21,0,0,0);
+  if(now>tonight)tonight.setDate(tonight.getDate()+1);
+  const msUntil=tonight-now;
+  setTimeout(()=>{
+    const today=todayStr();
+    const claimedToday=(S.history||[]).length>0&&S.history[0].date===today;
+    if(!claimedToday&&Notification.permission==='granted'){
+      new Notification('System — Arise',{
+        body:'Hunter! You have not claimed your daily XP yet. Arise!',
+        icon:'android-chrome-192x192.png'
+      });
+    }
+    scheduleReminderCheck();
+  },msUntil);
+}
+
+// ─── Missed Day Check ─────────────────────────────────────────────────────────
+function checkMissedDay(){
+  const hist=S.history||[];
+  if(hist.length===0)return;
+  const lastDate=new Date(hist[0].date+'T12:00:00');
+  const today=new Date();today.setHours(12,0,0,0);
+  const diffDays=Math.round((today-lastDate)/(1000*60*60*24));
+  if(diffDays===0)return; // claimed today already
+  if(diffDays===1){
+    // Missed yesterday — Iron Will saves streak once
+    if(S.ironWill){
+      S.ironWill=false;save();
+      setTimeout(()=>toast('<span class="txp">Iron Will Shard!</span> Yesterday\'s miss forgiven. Streak intact!'),1000);
+      return;
+    }
+    // Monarch's Decree saves streak once
+    if((S.ownedItems||[]).includes('monarchs_decree')&&S.monarchsDecreeAvailable){
+      S.monarchsDecreeAvailable=false;save();
+      setTimeout(()=>toast('<span class="txp">Monarch\'s Decree!</span> Day off forgiven. Streak intact!'),1000);
+      return;
+    }
+    // No protection — streak resets
+    if(S.streak>0){
+      setTimeout(()=>toast(`<span style='color:var(--red)'>Missed yesterday.</span> Streak reset to 0.`),1000);
+      S.streak=0;save();render();
+    }
+  } else if(diffDays>1&&S.streak>0){
+    setTimeout(()=>toast(`<span style='color:var(--red)'>Missed ${diffDays-1} day(s).</span> Streak reset.`),1000);
+    S.streak=0;save();render();
+  }
+}
+function importData(e){
+  const file=e.target.files[0];if(!file)return;
+  const r=new FileReader();
+  r.onload=ev=>{try{S={...S,...JSON.parse(ev.target.result)};applyTheme();save();render();toast('<span class="txp">Data imported!</span>');}catch(err){toast('<span style="color:var(--red)">Import failed.</span>');}};
+  r.readAsText(file);e.target.value='';
+}
+
+// ─── Rank ─────────────────────────────────────────────────────────────────────
+function rankObj(lvl){return RANKS.find(r=>{const[a,b]=r.lvls.split('–').map(Number);return lvl>=a&&lvl<=b;})||RANKS[0];}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render(){
+  window.S=S; // keep global ref synced
+  checkTitles();
+  const need=XPN(S.level),pct=Math.min(100,Math.round(S.currentXp/need*100));
+  const rk=rankObj(S.level);
+  document.getElementById('h-lv').textContent=S.level;
+  document.getElementById('h-ti').textContent=GT(S.level);
+  document.getElementById('h-xpt').textContent=`${S.currentXp} / ${need} XP`;
+  document.getElementById('h-xpb').style.width=pct+'%';
+  const rl=document.getElementById('h-rl');rl.textContent=GR(S.level);rl.style.color=rk.c;
+  // Gold
+  document.getElementById('gold-disp').textContent=S.gold||0;
+
+  // Active title under name
+  const ptEl=document.getElementById('player-title');
+  if(S.activeTitle){
+    const t=TITLES.find(t=>t.id===S.activeTitle);
+    ptEl.textContent=t?`${t.icon} ${t.name}`:'';
+  }else{ptEl.textContent='';}
+
+  // Daily progress
+  const allMain=QUESTS.filter(q=>!q.opt&&!(q.id==='workout'&&isWorkoutLocked()));
+  const doneMain=allMain.filter(q=>S.checked[q.id]).length;
+  const dpct=Math.round(doneMain/allMain.length*100);
+  document.getElementById('day-pct').textContent=dpct+'%';
+  document.getElementById('day-bar-f').style.width=dpct+'%';
+  document.getElementById('day-txt').textContent=`${doneMain}/${allMain.length} main`;
+
+  ATTRS.forEach(a=>{const el=document.getElementById('ms-'+a.key.toLowerCase());if(el)el.textContent=S.attrs[a.key];});
+  document.getElementById('s-earned').textContent='+'+calcXP()+' XP';
+  document.getElementById('s-streak').textContent=S.streak;
+  document.getElementById('s-ap').textContent=S.ap;
+
+  // Claim button state
+  const canClaim=QUESTS.filter(q=>!q.opt&&!(q.id==='workout'&&isWorkoutLocked())).every(q=>S.checked[q.id]);
+  const claimBtn=document.getElementById('claim-btn');
+  if(claimBtn){
+    claimBtn.style.opacity=canClaim?'1':'0.45';
+    claimBtn.style.borderColor=canClaim?'var(--purple)':'var(--t3)';
+    claimBtn.style.color=canClaim?'var(--pl)':'var(--t3)';
+  }
+
+  // Km tracker
+  const km=S.kmToday||0;
+  const kmEl=document.getElementById('km-today-disp');
+  if(kmEl)kmEl.textContent=km.toFixed(1)+' km';
+  const bossEl2=document.getElementById('km-boss-status');
+  if(bossEl2)bossEl2.textContent=`Boss: ${Math.min(5,km).toFixed(1)}/5km`;
+  const dgEl2=document.getElementById('km-dg-status');
+  if(dgEl2)dgEl2.textContent=`Dungeon: ${Math.min(10,km).toFixed(1)}/10km`;
+
+  // Active buffs indicator
+  const activeBuffs=[];
+  if(S.shadowExtraction)activeBuffs.push('⚡ 2x XP');
+  if(S.shadowCloak)activeBuffs.push('🌑 Shield');
+  if(S.ironWill)activeBuffs.push('💎 Iron Will');
+  if((S.curses||[]).some(c=>c.id==='weakening'))activeBuffs.push('💀 -10% XP');
+  if(activeBuffs.length>0){
+    const existing=document.getElementById('active-buffs-bar');
+    if(existing)existing.textContent=activeBuffs.join(' · ');
+  }
+
+  // Boss
+  const bossEl=document.getElementById('boss-section');
+  if(isSunday()){
+    const bd=!!S.bossChecked[BOSS_QUEST.id];
+    if(bd){
+      bossEl.innerHTML=`<div class="boss-card done" style="cursor:default;">
+        <div class="boss-header"><span class="boss-icon">✅</span>
+        <div><div class="boss-lbl">⚔ WEEKLY BOSS</div><div class="boss-name">${BOSS_QUEST.name}</div></div>
+        <div style="font-family:'Orbitron';font-size:10px;color:var(--tl)">DEFEATED</div></div>
+        <div class="boss-tags">${BOSS_QUEST.tags}</div></div>`;
+    } else {
+      bossEl.innerHTML=`<div class="boss-card" onclick="toggleBoss('${BOSS_QUEST.id}')">
+        <div class="boss-header"><span class="boss-icon">💀</span>
+        <div><div class="boss-lbl">⚔ WEEKLY BOSS</div><div class="boss-name">${BOSS_QUEST.name}</div></div>
+        <div class="boss-xp">+${BOSS_QUEST.xp}</div></div>
+        <div class="boss-tags">${BOSS_QUEST.tags}</div></div>`;
+    }
+  }else{
+    const du=(7-new Date().getDay())%7||7;
+    bossEl.innerHTML=`<div style="background:rgba(239,159,39,.04);border:0.5px solid rgba(239,159,39,.18);border-radius:8px;padding:7px 12px;margin-bottom:9px;display:flex;align-items:center;gap:8px;">
+      <span style="font-size:13px">💀</span>
+      <div><div style="font-family:'Orbitron';font-size:7px;letter-spacing:2px;color:var(--amber)">WEEKLY BOSS</div>
+      <div style="font-size:10px;color:var(--t3);font-family:'Share Tech Mono'">Appears Sunday · ${du} day${du!==1?'s':''} away</div></div></div>`;
+  }
+
+  // Dungeon
+  const dgEl=document.getElementById('dungeon-section');
+  const dgDone=DUNGEON_QUESTS.filter(q=>S.dungeonChecked[q.id]||(getDungeonProgress(q.id)&&getDungeonProgress(q.id).pct===100)).length;
+  const dgPct=Math.round(dgDone/DUNGEON_QUESTS.length*100);
+  const allDgDone=dgDone===DUNGEON_QUESTS.length;
+  const dgXpTotal=DUNGEON_QUESTS.reduce((s,q)=>s+q.xp,0);
+  const dgList=DUNGEON_QUESTS.map(q=>{
+    const prog=getDungeonProgress(q.id);
+    const isDone=S.dungeonChecked[q.id]||(prog&&prog.pct===100);
+    const progBar=prog?`<div class="dg-prog-wrap">
+      <div class="dg-prog-row"><span class="dg-prog-lbl">${prog.label}</span><span class="dg-prog-pct">${prog.pct}%</span></div>
+      <div class="dg-prog-bar"><div class="dg-prog-fill" style="width:${prog.pct}%"></div></div>
+    </div>`:'';
+    return `<div class="qi ${isDone?'done':''}" style="margin-bottom:5px;padding:8px 12px;display:block;" onclick="toggleDungeon('${q.id}')">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="orb ${isDone?'done':''}"><div class="orb-in"></div></div>
+        <div class="qb"><div class="qn ${isDone?'s':''}" style="font-size:12px">${q.name}</div><div class="qt">${q.tags}</div></div>
+        <div class="qxp">+${q.xp}</div>
+      </div>
+      ${progBar}
+    </div>`;
+  }).join('');
+  dgEl.innerHTML=`<div class="dungeon-card">
+    <div class="dungeon-lbl">⚔ WEEKLY DUNGEON</div>
+    <div class="dungeon-name">Shadow Dungeon${allDgDone?' — CLEARED ✓':''}</div>
+    <div class="dungeon-prog"><span class="dungeon-pct">${dgDone}/${DUNGEON_QUESTS.length} quests · ${dgPct}%</span><span class="dungeon-xp">+${dgXpTotal} XP total</span></div>
+    <div class="dungeon-bar"><div class="dungeon-bar-f" style="width:${dgPct}%"></div></div>
+    <div style="margin-top:10px">${dgList}</div>
+  </div>`;
+
+  // Emergency
+  const emgActive=!!S.emgActive;
+  document.getElementById('emergency-section').classList.toggle('open',emgActive);
+  document.getElementById('emg-toggle-btn').classList.toggle('open',emgActive);
+  document.getElementById('emg-toggle-btn').style.borderColor=emgActive?'rgba(226,75,74,.7)':'rgba(226,75,74,.3)';
+  document.getElementById('emg-toggle-btn').style.background=emgActive?'rgba(226,75,74,.12)':'rgba(226,75,74,.04)';
+  document.getElementById('emg-toggle-label').textContent=emgActive?'⚠ EMERGENCY QUESTS — ΕΝΕΡΓΑ':'⚠ EMERGENCY QUESTS — ΑΝΕΝΕΡΓΑ';
+  document.getElementById('emergency-list').innerHTML=EMERGENCY.map(q=>`
+    <div class="qi emergency ${S.checked[q.id]?'done':''}" onclick="toggleQ('${q.id}')">
+      <div class="orb ${S.checked[q.id]?'done':''}"><div class="orb-in"></div></div>
+      <div class="qb"><div class="qn ${S.checked[q.id]?'s':''}">${q.name}<span class="emg-badge">EMERGENCY</span></div><div class="qt">${q.tags}</div></div>
+      <div class="qxp">+${q.xp}</div>
+    </div>`).join('');
+
+  // Quests
+  const allQ=[...QUESTS,...(S.customQuests||[])];
+  const diffMap={easy:'⚡ Easy',hard:'⚔️ Hard',brutal:'💀 Brutal'};
+  const sundayLock=isWorkoutLocked();
+  const hasBind=(S.curses||[]).some(c=>c.id==='shadow_bind');
+  const hasHuntersFocus=(S.ownedItems||[]).includes('hunters_focus');
+  document.getElementById('quest-list').innerHTML=allQ.map(q=>{
+    const isWorkout=q.id==='workout';
+    const locked=(q.req&&S.attrs[q.req.key]<q.req.val)||(isWorkout&&sundayLock);
+    const timerMin=(q.id==='study'&&hasHuntersFocus)?45:q.timer;
+    const timerBtn=timerMin?`<span class="timer-ico" onclick="event.stopPropagation();openTimer('${q.name}',${timerMin})">⏱</span>`:'';
+    const delBtn=q.id.startsWith('cq_')?`<button class="cq-del" onclick="event.stopPropagation();deleteCustomQuest('${q.id}')">✕</button>`:'';
+    const diffBadge=q.diff?`<span class="diff ${q.diff}">${diffMap[q.diff]||q.diff}</span>`:'';
+    const lockReq=locked?(isWorkout&&sundayLock?`<div class="lock-req">Rest Day — Unlocks Monday</div>`:`<div class="lock-req">Requires ${q.req.key} ${q.req.val}</div>`):'';
+    const focusBadge=(q.id==='study'&&hasHuntersFocus)?`<span class="diff easy" style="margin-left:4px">🎯 45min</span>`:'';
+    const bindBadge=(hasBind&&S.shadowBoundQuest===q.id)?`<span class="diff" style="background:rgba(226,75,74,.12);border-color:rgba(226,75,74,.35);color:var(--red);margin-left:4px">⛓ 0 XP</span>`:'';
+    return `<div class="qi ${S.checked[q.id]?'done':''} ${locked?'locked':''}" onclick="toggleQ('${q.id}')">
+      <div class="orb ${S.checked[q.id]?'done':''}"><div class="orb-in"></div></div>
+      <div class="qb">
+        <div class="qn ${S.checked[q.id]?'s':''}">${q.name}${q.opt&&!q.id.startsWith('cq_')?'<span class="ob">OPT</span>':''}${diffBadge}${focusBadge}${bindBadge}${timerBtn}${delBtn}</div>
+        <div class="qt">${q.tags}${lockReq}</div>
+      </div>
+      <div class="qxp ${q.opt?'o':''}">+${q.xp}</div>
+    </div>`;
+  }).join('');
+
+  // Shop
+  const gold=S.gold||0;const owned=S.ownedItems||[];
+  ['passive','legendary'].forEach(type=>{
+    const el=document.getElementById('shop-'+type);if(!el)return;
+    el.innerHTML=SHOP_ITEMS.filter(i=>i.type===type).map(item=>{
+      const isOwned=owned.includes(item.id);const canAfford=gold>=item.cost;
+      return `<div class="shop-card ${type} ${isOwned?'owned':''}">
+        <div class="shop-row">
+          <div class="shop-icon">${item.icon}</div>
+          <div class="shop-body"><div class="shop-name">${item.name}</div><div class="shop-desc">${item.desc}</div></div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;">
+            <div class="shop-cost">${item.cost}G</div>
+            <button class="shop-btn ${isOwned?'owned-btn':!canAfford?'poor-btn':''}" onclick="${isOwned||!canAfford?'':` buyItem('${item.id}')`}">${isOwned?'OWNED':!canAfford?'NO GOLD':'BUY'}</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  });
+
+  // Inventory
+  const inv=S.inventory||[];
+  document.getElementById('inv-buffs').innerHTML=inv.length===0
+    ?'<div class="inv-empty">No buffs. Open quest boxes to find items!</div>'
+    :inv.map(item=>`<div class="inv-card"><div class="inv-icon">${item.icon}</div><div class="inv-body"><div class="inv-name">${item.name}</div><div class="inv-desc">${item.desc}</div></div><button class="inv-use" onclick="useItem('${item.id}')">USE</button></div>`).join('');
+  const curses=S.curses||[];
+  document.getElementById('inv-curses').innerHTML=curses.length===0
+    ?'<div class="inv-empty">No active curses.</div>'
+    :curses.map(c=>`<div class="inv-card" style="border-color:rgba(226,75,74,.3)"><div class="inv-icon">${c.icon}</div><div class="inv-body"><div class="inv-name" style="color:var(--red)">${c.name}</div><div class="inv-desc">${c.desc}</div></div></div>`).join('');
+
+  // Attrs
+  document.getElementById('attr-grid').innerHTML=ATTRS.map(a=>{
+    const v=S.attrs[a.key],p=Math.min(100,Math.round((v%20)/20*100)||100);
+    return `<div class="ac"><div class="ac-k">${a.key}</div><div class="ac-v" style="color:${a.color}">${v}</div><div class="ac-n">${a.name}</div><div class="ac-b"><div class="ac-bf" style="width:${p}%;background:${a.color}"></div></div></div>`;
+  }).join('');
+
+  // Shadow Army
+  const unlockedCount=SHADOW_ARMY.filter(sh=>isShadowUnlocked(sh)).length;
+  document.getElementById('shadow-count').textContent=`${unlockedCount} / ${SHADOW_ARMY.length}`;
+  document.getElementById('shadow-grid').innerHTML=SHADOW_ARMY.map(sh=>{
+    const unlocked=isShadowUnlocked(sh);
+    return `<div class="shadow-card ${unlocked?'active':'locked'}">
+      <div class="shadow-ico">${unlocked?sh.icon:'❓'}</div>
+      <div class="shadow-name">${unlocked?sh.name:'???'}</div>
+      ${unlocked?`<div class="shadow-buff">${sh.buff}</div>`:`<div class="shadow-name">${sh.req}</div>`}
+    </div>`;
+  }).join('');
+
+  // AP
+  document.getElementById('ap-count').textContent=S.ap+' AP';
+  document.getElementById('ap-rows').innerHTML=S.ap>0
+    ?ATTRS.map(a=>`<div class="ap-row"><div class="ap-k">${a.key}</div><div class="ap-n">${a.name}</div><div class="ap-v">${S.attrs[a.key]}</div><button class="ap-b" onclick="assignAP('${a.key}')">+</button></div>`).join('')
+    :'<div style="font-size:12px;color:var(--t3);text-align:center;padding:10px;font-family:\'Share Tech Mono\'">Level up to earn Ability Points</div>';
+
+  // Weekly
+  renderWeekly();
+
+  // Consistency
+  const con=calcConsistency();
+  document.getElementById('con-num').textContent=con;
+  document.getElementById('con-num').style.color=con>=80?'var(--tl)':con>=50?'var(--amber)':'var(--red)';
+  document.getElementById('con-fill').style.width=con+'%';
+  document.getElementById('con-fill').style.background=con>=80?'var(--tl)':con>=50?'var(--amber)':'var(--red)';
+  document.getElementById('con-desc').textContent=
+    con>=80?'Exceptional consistency. You are built different.':
+    con>=60?'Solid discipline. Keep the momentum.':
+    con>=40?'Progress visible. Don\'t break the chain.':
+    con>=20?'Inconsistent. The System is watching.':
+    'No data yet. Start your journey.';
+
+  // Streaks
+  document.getElementById('streak-list').innerHTML=STREAKS.map(s=>{
+    const d=parseInt(s.d);const done=S.streak>=d;
+    return `<div class="sk-c" style="${done?'border-color:rgba(93,202,165,.3);background:rgba(29,158,117,.06)':''}">
+      <span class="sk-d" style="${done?'color:var(--tl)':''}">${s.d}</span>
+      <span class="sk-n">${s.n}</span>
+      <span class="sk-x" style="${done?'color:var(--tl)':''}">${done?'✓ ':''}${s.x}</span>
+    </div>`;
+  }).join('');
+
+  // Ranks
+  document.getElementById('rank-list').innerHTML=RANKS.map(r=>{
+    const[a,b]=r.lvls.split('–').map(Number);const cur=S.level>=a&&S.level<=b;
+    return `<div class="rk-c" style="${cur?`border-color:${r.bc};background:${r.bg}`:''}">
+      <div class="rk-l" style="color:${r.c};border-color:${r.bc};background:${r.bg}">${r.l}</div>
+      <div class="rk-i"><div class="rk-t">${r.l}-Rank · ${r.name}</div><div class="rk-s">Level ${r.lvls}</div></div>
+      ${cur?'<div class="cur-chip">CURRENT</div>':''}
+    </div>`;
+  }).join('');
+
+  // Titles
+  S.unlockedTitles=S.unlockedTitles||[];
+  document.getElementById('title-list').innerHTML=TITLES.map(t=>{
+    const unlocked=t.check(S)||S.unlockedTitles.includes(t.id);
+    const active=S.activeTitle===t.id;
+    return `<div class="title-card ${unlocked?'unlocked':''} ${active?'active':''}">
+      <div class="title-icon">${t.icon}</div>
+      <div class="title-info">
+        <div class="title-name">${t.name}</div>
+        <div class="title-req">${t.req}</div>
+      </div>
+      ${unlocked?`<button class="title-equip ${active?'on':''}" onclick="equipTitle('${t.id}')">${active?'ACTIVE':'EQUIP'}</button>`:`<span class="title-lock">🔒</span>`}
+    </div>`;
+  }).join('');
+}
+
+// ─── Swipe Gestures ───────────────────────────────────────────────────────────
+(function(){
+  const tabs=['quests','stats','streaks','ranks','history','shop','inventory'];
+  let startX=0,startY=0,startScrollTop=0;
+  const content=document.getElementById('content');
+  content.addEventListener('touchstart',e=>{
+    startX=e.touches[0].clientX;
+    startY=e.touches[0].clientY;
+    startScrollTop=content.scrollTop;
+  },{passive:true});
+  content.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].clientX-startX;
+    const dy=e.changedTouches[0].clientY-startY;
+    const scrolled=Math.abs(content.scrollTop-startScrollTop)>5;
+    // Require dx to be at least 2x dy AND at least 70px to avoid accidental swipes
+    if(!scrolled&&Math.abs(dx)>Math.abs(dy)*2&&Math.abs(dx)>70){
+      const ni=document.querySelectorAll('.ni');
+      const active=[...ni].findIndex(n=>n.classList.contains('on'));
+      if(dx<0&&active<tabs.length-1)goTab(tabs[active+1],active+1);
+      else if(dx>0&&active>0)goTab(tabs[active-1],active-1);
+    }
+  },{passive:true});
+})();
+
+// ─── Clock ────────────────────────────────────────────────────────────────────
+function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString('el',{hour:'2-digit',minute:'2-digit'});}
+tick();setInterval(tick,10000);
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+(function(){
+  const bg=document.getElementById('bg');
+  for(let i=0;i<20;i++){
+    const p=document.createElement('div');p.className='p';
+    p.style.left=Math.random()*100+'%';p.style.height=(20+Math.random()*80)+'px';
+    p.style.animationDuration=(5+Math.random()*9)+'s';p.style.animationDelay=(Math.random()*10)+'s';
+    p.style.opacity=Math.random()*.5;bg.appendChild(p);
+  }
+  // Pause animations when page is hidden to save battery
+  document.addEventListener('visibilitychange',()=>{
+    bg.style.animationPlayState=document.hidden?'paused':'running';
+    bg.querySelectorAll('.p').forEach(p=>p.style.animationPlayState=document.hidden?'paused':'running');
+  });
+})();
+
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+load();dateGuard();applyTheme();setDailyQuote();
+checkMissedDay();
+requestNotificationPermission();
+scheduleReminderCheck();
+render();
+</script>
+</body>
+</html>
