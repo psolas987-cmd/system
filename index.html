@@ -58,6 +58,7 @@ window._fbSave=async(state)=>{
 };
 
 onAuthStateChanged(auth,async user=>{
+  if (user) { localStorage.clear(); }
   currentUser=user;
   if(unsub){unsub();unsub=null;}
   if(user){
