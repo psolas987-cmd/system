@@ -29,12 +29,10 @@ const app=initializeApp(firebaseConfig);
 const auth=getAuth(app);
 const db=getFirestore(app);
 const provider=new GoogleAuthProvider();
-// --- START RECOVERY BLOCK ---
-onAuthStateChanged(auth, async (user) => {
-  if (user) {
-    const recoveryState = {
+const recoveryState = {
       lvl: 7,
       totalXp: 685,
+      currentXp: 85,
       gold: 102,
       streak: 6,
       bestStreak: 6,
@@ -56,17 +54,6 @@ onAuthStateChanged(auth, async (user) => {
       quests: [],
       customQuests: []
     };
-    
-    // Ενημερώνει τη βάση και το κινητό σου
-    await setDoc(doc(db, 'hunters', user.uid), {
-      state: JSON.stringify(recoveryState),
-      updatedAt: serverTimestamp()
-    });
-    localStorage.setItem('sl_v5', JSON.stringify(recoveryState));
-    console.log("RECOVERY SUCCESSFUL");
-  }
-});
-// --- END RECOVERY BLOCK ---
 let currentUser=null;
 let unsub=null;
 let _ignoreNextSnapshot=false;
