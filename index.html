@@ -11,6 +11,7 @@
 <title>System — Arise</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <!-- ═══ FIREBASE ═══ Replace the firebaseConfig below with your own config ═══ -->
+<!-- SECURITY WARNING: Do not expose API keys in client-side code. Move to environment variables or server-side. -->
 <script type="module">
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
@@ -58,7 +59,6 @@ window._fbSave=async(state)=>{
 };
 
 onAuthStateChanged(auth,async user=>{
-  if (user) { localStorage.clear(); }
   currentUser=user;
   if(unsub){unsub();unsub=null;}
   if(user){
@@ -709,7 +709,7 @@ canvas#statChart{width:100%;height:100px;display:block;}
         <div class="sum-div"></div>
         <div class="sum-row2"><div class="sum-l2">ABILITY POINTS</div><div class="sum-v2" id="s-ap">0</div></div>
       </div>
-      <button class="btn" id="claim-btn" onclick="claimDay()">— CLAIM DAILY XP —</button>
+      <button class="btn" id="claim-btn" onclick="claimDay()" aria-label="Claim daily XP reward">— CLAIM DAILY XP —</button>
       <button class="btn danger" onclick="openConfirm()" style="margin-top:6px">— TRIGGER PENALTY —</button>
       <div class="pen-box">
         <div class="pen-h">! PENALTY ZONE</div>
@@ -1042,9 +1042,13 @@ function acceptCurse(){
   // shadow_bind: pick a random main quest to give 0 XP tomorrow
   if(c.id==='shadow_bind'){
     const mainIds=QUESTS.filter(q=>!q.opt).map(q=>q.id);
-    S.shadowBoundQuest=mainIds[Math.floor(Math.random()*mainIds.length)];
-    const boundQ=QUESTS.find(q=>q.id===S.shadowBoundQuest);
-    setTimeout(()=>toast(`<span style='color:var(--red)'>Shadow Bind!</span> "${boundQ?.name}" gives 0 XP today.`),500);
+    if(mainIds.length > 0){
+      S.shadowBoundQuest=mainIds[Math.floor(Math.random()*mainIds.length)];
+      const boundQ=QUESTS.find(q=>q.id===S.shadowBoundQuest);
+      setTimeout(()=>toast(`<span style='color:var(--red)'>Shadow Bind!</span> "${boundQ?.name}" gives 0 XP today.`),500);
+    } else {
+      toast('<span style="color:var(--red)">No main quests available for bind.</span>');
+    }
   }
   S.pendingCurse=null;save();render();
   toast("<span style='color:var(--red)'>Curse accepted.</span>");
@@ -1088,7 +1092,7 @@ function useItem(id){
 window.S=S;
 function save(){
   S._savedAt=Date.now();
-  try{localStorage.setItem('sl_v5',JSON.stringify(S));}catch(e){}
+  try{localStorage.setItem('sl_v5',JSON.stringify(S));}catch(e){toast('Storage full or error. Data not saved.');}
   // Cloud sync — debounced
   clearTimeout(save._t);
   save._t=setTimeout(()=>{ window._fbSave&&window._fbSave(S); },800);
@@ -1240,16 +1244,18 @@ function showLvOverlay(level){
   document.getElementById('lv-ov-title').textContent=GT(level);
   // Spawn particles
   const pc=document.getElementById('lvParticles');
-  pc.innerHTML='';
-  const colors=['#7F77DD','#5DCAA5','#EF9F27','#E24B4A','#AFA9EC'];
-  for(let i=0;i<40;i++){
-    const p=document.createElement('div');p.className='lv-p';
-    p.style.left=Math.random()*100+'%';
-    p.style.height=(30+Math.random()*60)+'px';
-    p.style.background=colors[Math.floor(Math.random()*colors.length)];
-    p.style.animationDuration=(1.5+Math.random()*2)+'s';
-    p.style.animationDelay=(Math.random()*.8)+'s';
-    pc.appendChild(p);
+  if(pc){
+    pc.innerHTML=''; // Clear previous particles
+    const colors=['#7F77DD','#5DCAA5','#EF9F27','#E24B4A','#AFA9EC'];
+    for(let i=0;i<40;i++){
+      const p=document.createElement('div');p.className='lv-p';
+      p.style.left=Math.random()*100+'%';
+      p.style.height=(30+Math.random()*60)+'px';
+      p.style.background=colors[Math.floor(Math.random()*colors.length)];
+      p.style.animationDuration=(1.5+Math.random()*2)+'s';
+      p.style.animationDelay=(Math.random()*.8)+'s';
+      pc.appendChild(p);
+    }
   }
   document.getElementById('lv-overlay').classList.add('on');
 }
@@ -1261,21 +1267,22 @@ function closeLvOverlay(){
 
 // ─── XP / Leveling ────────────────────────────────────────────────────────────
 function addXp(n){
- 
-S.totalXp+=n;S.currentXp+=n;
-  while(S.currentXp>=XPN(S.level)){
-    S.currentXp-=XPN(S.level);S.level++;S.ap+=5;
-    // Record first rank date
-    const r=GR(S.level);
-    if(!S.records.firstRankDate[r])S.records.firstRankDate[r]=todayStr();
-    const f=document.getElementById('lv-flash');
-    f.classList.add('on');setTimeout(()=>f.classList.remove('on'),600);
-    vibrate([50,30,100,30,200,30,300]);
-    const lvl=S.level;
-    setTimeout(()=>showLvOverlay(lvl),400);
-  }
-  checkTitles();
-  save();render();
+  try{
+    S.totalXp+=n;S.currentXp+=n;
+    while(S.currentXp>=XPN(S.level)){
+      S.currentXp-=XPN(S.level);S.level++;S.ap+=5;
+      // Record first rank date
+      const r=GR(S.level);
+      if(!S.records.firstRankDate[r])S.records.firstRankDate[r]=todayStr();
+      const f=document.getElementById('lv-flash');
+      if(f)f.classList.add('on');setTimeout(()=>f&&f.classList.remove('on'),600);
+      vibrate([50,30,100,30,200,30,300]);
+      const lvl=S.level;
+      setTimeout(()=>showLvOverlay(lvl),400);
+    }
+    checkTitles();
+    save();render();
+  }catch(e){console.error('Error in addXp:',e);toast('Error adding XP.');}
 }
 
 function calcXP(){
@@ -1510,14 +1517,14 @@ function deleteCustomQuest(id){
 function calcConsistency(){
   const h=S.history||[];
   if(h.length===0)return 0;
-  // Count how many of the last 30 CALENDAR days had a claim
-  const doneSet=new Set(h.map(d=>d.date));
+  // Count unique days with claims in the last 30 calendar days
+  const claimedDays=new Set(h.map(d=>d.date));
   const today=new Date();
   let daysWithClaim=0;
   for(let i=1;i<=30;i++){
     const d=new Date(today);d.setDate(today.getDate()-i);
     const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    if(doneSet.has(ds))daysWithClaim++;
+    if(claimedDays.has(ds))daysWithClaim++;
   }
   return Math.round((daysWithClaim/30)*100);
 }
@@ -1546,16 +1553,16 @@ function timerToggle(){
   if(timerRunning){
     // Pause: save remaining time
     clearInterval(timerInterval);timerRunning=false;
+    timerStartTs=0;
     document.getElementById('timerStartBtn').textContent='RESUME';
   }else{
     if(timerLeft<=0)timerLeft=timerTotal;
     timerRunning=true;
     timerStartTs=Date.now();
-    const snapshotLeft=timerLeft;
     document.getElementById('timerStartBtn').textContent='PAUSE';
     timerInterval=setInterval(()=>{
       const elapsed=Math.floor((Date.now()-timerStartTs)/1000);
-      timerLeft=Math.max(0,snapshotLeft-elapsed);
+      timerLeft=Math.max(0,timerTotal-elapsed);
       updateTimerDisplay();
       if(timerLeft<=0){
         clearInterval(timerInterval);timerRunning=false;
@@ -1625,16 +1632,16 @@ function renderHeatmap(){
     cells.push(`<div class="${cls}" title="${ds}"></div>`);
   }
   el.innerHTML=cells.join('');
-  // Fix: count only days within the 70-day window, not all history
-  const windowDates=new Set(cells.map((_,i)=>{
-    const d=new Date(today);d.setDate(today.getDate()-(69-i));
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  }));
-  const doneInWindow=[...doneSet].filter(d=>windowDates.has(d)).length;
-  const pastDays=69; // today doesn't count as missed
-  const donePct=Math.round(doneInWindow/pastDays*100);
+  // Count done days in the last 70 days (including today if done)
+  const doneInWindow=[...doneSet].filter(ds=>{
+    const d=new Date(ds+'T12:00:00');
+    const diff=(today - d)/(1000*60*60*24);
+    return diff >=0 && diff <=69;
+  }).length;
+  const totalDays=70;
+  const donePct=Math.round(doneInWindow/totalDays*100);
   const hmRate=document.getElementById('hm-rate');
-  if(hmRate)hmRate.textContent=`${doneInWindow}/${pastDays} days · ${donePct}%`;
+  if(hmRate)hmRate.textContent=`${doneInWindow}/${totalDays} days · ${donePct}%`;
 }
 
 // ─── Personal Records ─────────────────────────────────────────────────────────
@@ -2068,9 +2075,9 @@ function render(){
   content.addEventListener('touchend',e=>{
     const dx=e.changedTouches[0].clientX-startX;
     const dy=e.changedTouches[0].clientY-startY;
-    const scrolled=Math.abs(content.scrollTop-startScrollTop)>5;
-    // Require dx to be at least 2x dy AND at least 70px to avoid accidental swipes
-    if(!scrolled&&Math.abs(dx)>Math.abs(dy)*2&&Math.abs(dx)>70){
+    const scrolled=Math.abs(content.scrollTop-startScrollTop)>10; // Increased threshold
+    // Require dx to be at least 3x dy AND at least 100px to avoid accidental swipes
+    if(!scrolled&&Math.abs(dx)>Math.abs(dy)*3&&Math.abs(dx)>100){
       const ni=document.querySelectorAll('.ni');
       const active=[...ni].findIndex(n=>n.classList.contains('on'));
       if(dx<0&&active<tabs.length-1)goTab(tabs[active+1],active+1);
@@ -2101,11 +2108,15 @@ tick();setInterval(tick,10000);
 
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 
-load();dateGuard();applyTheme();setDailyQuote();
-checkMissedDay();
-requestNotificationPermission();
-scheduleReminderCheck();
-render();
+if(location.protocol !== 'https:' && location.hostname !== 'localhost'){
+  document.body.innerHTML='<div style="text-align:center;padding:50px;font-family:Arial,sans-serif;">This app requires HTTPS for security. Please access via https://</div>';
+} else {
+  load();dateGuard();applyTheme();setDailyQuote();
+  checkMissedDay();
+  requestNotificationPermission();
+  scheduleReminderCheck();
+  render();
+}
 </script>
 </body>
 </html>
