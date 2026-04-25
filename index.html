@@ -10,85 +10,81 @@
 <link rel="manifest" href="manifest.json">
 <title>System — Arise</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-<!-- ═══ FIREBASE ═══ Replace the firebaseConfig below with your own config ═══ -->
-<!-- SECURITY WARNING: Do not expose API keys in client-side code. Move to environment variables or server-side. -->
+<!-- Removed sensitive Firebase configuration from client-side code -->
 <script type="module">
-import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import{getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import{getFirestore,doc,setDoc,onSnapshot,serverTimestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
-const firebaseConfig={
-  apiKey:"AIzaSyCFHw5oU5mXvXDo5hot47yfB3fu_p87EWM",
-  authDomain:"system-d6922.firebaseapp.com",
-  projectId:"system-d6922",
-  storageBucket:"system-d6922.firebasestorage.app",
-  messagingSenderId:"319147692601",
-  appId:"1:319147692601:web:3e2aa5e4a2439e2ec033e8"
-};
+const firebaseConfig = JSON.parse(process.env.FIREBASE_CONFIG);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
 
-const app=initializeApp(firebaseConfig);
-const auth=getAuth(app);
-const db=getFirestore(app);
-const provider=new GoogleAuthProvider();
+const FirebaseService = {
+  currentUser: null,
+  unsub: null,
+  _ignoreNextSnapshot: false,
 
-let currentUser=null;
-let unsub=null;
-let _ignoreNextSnapshot=false;
+  async signIn() {
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      console.error('Login failed:', e.message);
+    }
+  },
 
-// expose to global scope
-window._fbSignIn=async()=>{
-  try{
-    await signInWithPopup(auth,provider);
-  }catch(e){
-    window.toast&&window.toast('<span style="color:var(--red)">Login failed: '+e.message+'</span>');
-  }
-};
-window._fbSignOut=async()=>{
-  if(unsub){unsub();unsub=null;}
-  await signOut(auth);
-  currentUser=null;
-  window._updateSyncUI&&window._updateSyncUI(null);
-  window.toast&&window.toast('Signed out. Using local storage only.');
-};
-window._fbSave=async(state)=>{
-  if(!currentUser)return;
-  try{
-    _ignoreNextSnapshot=true;
-    await setDoc(doc(db,'hunters',currentUser.uid),{state:JSON.stringify(state),updatedAt:serverTimestamp()});
-  }catch(e){console.warn('FB save error',e);}
-};
+  async signOut() {
+    if (this.unsub) {
+      this.unsub();
+      this.unsub = null;
+    }
+    await signOut(auth);
+    this.currentUser = null;
+  },
 
-onAuthStateChanged(auth,async user=>{
-  currentUser=user;
-  if(unsub){unsub();unsub=null;}
-  if(user){
-    window._updateSyncUI&&window._updateSyncUI(user);
-    // Listen for real-time changes
-    unsub=onSnapshot(doc(db,'hunters',user.uid),snap=>{
-      if(_ignoreNextSnapshot){_ignoreNextSnapshot=false;return;}
-      if(snap.exists()){
-        try{
-          const remote=JSON.parse(snap.data().state);
-          const remoteTs=snap.data().updatedAt?.toMillis?.()||0;
-          const localTs=window.S._savedAt||0;
-          // Use timestamp if available, fall back to totalXp comparison
-          const remoteIsNewer=remoteTs>0?remoteTs>localTs:(remote.totalXp||0)>=(window.S.totalXp||0);
-          if(remoteIsNewer){
-            Object.assign(window.S,remote);
-            try{localStorage.setItem('sl_v5',JSON.stringify(window.S));}catch(e){}
-            window.render&&window.render();
-            window.toast&&window.toast('☁️ <span class="txp">Synced</span> from cloud.');
+  async saveState(state) {
+    if (!this.currentUser) return;
+    try {
+      this._ignoreNextSnapshot = true;
+      await setDoc(doc(db, 'hunters', this.currentUser.uid), {
+        state: JSON.stringify(state),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.warn('FB save error', e);
+    }
+  },
+
+  initAuthListener() {
+    onAuthStateChanged(auth, async (user) => {
+      this.currentUser = user;
+      if (this.unsub) {
+        this.unsub();
+        this.unsub = null;
+      }
+      if (user) {
+        this.unsub = onSnapshot(doc(db, 'hunters', user.uid), (snap) => {
+          if (this._ignoreNextSnapshot) {
+            this._ignoreNextSnapshot = false;
+            return;
           }
-        }catch(e){}
-      }else{
-        // No cloud data yet — push local
-        window._fbSave&&window._fbSave(window.S);
+          if (snap.exists()) {
+            try {
+              const remote = JSON.parse(snap.data().state);
+              Object.assign(window.S, remote);
+            } catch (e) {
+              console.error('Error syncing data:', e);
+            }
+          }
+        });
       }
     });
-  }else{
-    window._updateSyncUI&&window._updateSyncUI(null);
-  }
-});
+  },
+};
+
+FirebaseService.initAuthListener();
 </script>
 <style>
 :root{
@@ -585,72 +581,80 @@ canvas#statChart{width:100%;height:100px;display:block;}
   </div>
 </div>
 
-<div class="app">
-  <div class="sbar">
-    <span class="sbar-t" id="clock">00:00</span>
-    <div class="gold-chip"><span class="gold-v" id="gold-disp">0</span><span class="gold-l">GOLD</span></div>
-    <div class="sbar-i">
-      <div class="sig"><span></span><span></span><span></span></div>
-      <div class="bat"><div class="bat-f"></div></div>
+<div class="app" role="main">
+  <header class="hdr" role="banner">
+    <h1 class="player-n" aria-label="Player Name">Player Name</h1>
+    <p class="player-title" aria-label="Player Title">Title</p>
+  </header>
+  <button class="btn" aria-label="Sign In" onclick="FirebaseService.signIn()">Sign In</button>
+  <button class="btn danger" aria-label="Sign Out" onclick="FirebaseService.signOut()">Sign Out</button>
+</div>
+
+<div class="sbar">
+  <span class="sbar-t" id="clock">00:00</span>
+  <div class="gold-chip"><span class="gold-v" id="gold-disp">0</span><span class="gold-l">GOLD</span></div>
+  <div class="sbar-i">
+    <div class="sig"><span></span><span></span><span></span></div>
+    <div class="bat"><div class="bat-f"></div></div>
+  </div>
+</div>
+<!-- Cloud Sync Bar -->
+<div class="sync-bar">
+  <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncLabel">Local only — tap to sync</span></div>
+  <button class="sync-btn login" id="syncBtn" onclick="openSyncModal()">☁️ SYNC</button>
+</div>
+
+<!-- Box Overlay -->
+<div id="box-overlay">
+  <div class="box-rarity" id="box-rarity-lbl">COMMON BOX</div>
+  <div class="box-icon" id="box-icon-el">📦</div>
+  <div class="box-item-name" id="box-item-name">—</div>
+  <div class="box-item-desc" id="box-item-desc">—</div>
+  <div class="box-item-val" id="box-item-val">—</div>
+  <button class="box-collect-btn" onclick="closeBox()">— COLLECT —</button>
+</div>
+
+<!-- Curse overlay -->
+<div id="curse-overlay">
+  <div style="font-family:'Orbitron';font-size:9px;color:var(--red);letter-spacing:3px">! CURSE RECEIVED</div>
+  <div style="font-size:48px" id="curse-icon-el">💀</div>
+  <div style="font-family:'Orbitron';font-size:17px;font-weight:900;color:var(--text)" id="curse-name-el">—</div>
+  <div style="font-size:11px;color:var(--t2);font-family:'Share Tech Mono';text-align:center;max-width:260px" id="curse-desc-el">—</div>
+  <div style="font-family:'Orbitron';font-size:10px;color:var(--amber)" id="curse-cost-el">—</div>
+  <div class="curse-btns">
+    <button class="curse-btn accept" onclick="acceptCurse()">ACCEPT</button>
+    <button class="curse-btn refuse" id="curse-refuse-btn" onclick="refuseCurse()">REFUSE</button>
+  </div>
+</div>
+
+<!-- Daily System Quote -->
+<div class="sys-quote" id="sys-quote" onclick="nextQuote()">— Loading system message...</div>
+
+<div class="hdr">
+  <div class="hdr-top">
+    <div>
+      <div class="sys-lbl">SYSTEM — SOLO LEVELING</div>
+      <div class="player-n">DESTROYER</div>
+      <div class="player-title" id="player-title"></div>
+      <div id="active-buffs-bar" style="font-size:9px;color:var(--amber);font-family:'Share Tech Mono';margin-top:2px;min-height:13px;"></div>
+    </div>
+    <div class="rank-box">
+      <div class="rank-l" id="h-rl">E</div>
+      <div class="rank-lb">RANK</div>
     </div>
   </div>
-  <!-- Cloud Sync Bar -->
-  <div class="sync-bar">
-    <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncLabel">Local only — tap to sync</span></div>
-    <button class="sync-btn login" id="syncBtn" onclick="openSyncModal()">☁️ SYNC</button>
+  <div class="lv-row">
+    <span class="lv-lb">LV</span>
+    <span class="lv-n" id="h-lv">4</span>
+    <span class="lv-ti" id="h-ti">Weakest Hunter</span>
   </div>
-
-  <!-- Box Overlay -->
-  <div id="box-overlay">
-    <div class="box-rarity" id="box-rarity-lbl">COMMON BOX</div>
-    <div class="box-icon" id="box-icon-el">📦</div>
-    <div class="box-item-name" id="box-item-name">—</div>
-    <div class="box-item-desc" id="box-item-desc">—</div>
-    <div class="box-item-val" id="box-item-val">—</div>
-    <button class="box-collect-btn" onclick="closeBox()">— COLLECT —</button>
+  <div class="day-prog">
+    <span class="day-pct" id="day-pct">0%</span>
+    <div class="day-bar"><div class="day-bar-f" id="day-bar-f" style="width:0%"></div></div>
+    <span class="day-txt" id="day-txt">0/4 main</span>
   </div>
-
-  <!-- Curse Overlay -->
-  <div id="curse-overlay">
-    <div style="font-family:'Orbitron';font-size:9px;color:var(--red);letter-spacing:3px">! CURSE RECEIVED</div>
-    <div style="font-size:48px" id="curse-icon-el">💀</div>
-    <div style="font-family:'Orbitron';font-size:17px;font-weight:900;color:var(--text)" id="curse-name-el">—</div>
-    <div style="font-size:11px;color:var(--t2);font-family:'Share Tech Mono';text-align:center;max-width:260px" id="curse-desc-el">—</div>
-    <div style="font-family:'Orbitron';font-size:10px;color:var(--amber)" id="curse-cost-el">—</div>
-    <div class="curse-btns">
-      <button class="curse-btn accept" onclick="acceptCurse()">ACCEPT</button>
-      <button class="curse-btn refuse" id="curse-refuse-btn" onclick="refuseCurse()">REFUSE</button>
-    </div>
-  </div>
-
-  <!-- Daily System Quote -->
-  <div class="sys-quote" id="sys-quote" onclick="nextQuote()">— Loading system message...</div>
-
-  <div class="hdr">
-    <div class="hdr-top">
-      <div>
-        <div class="sys-lbl">SYSTEM — SOLO LEVELING</div>
-        <div class="player-n">DESTROYER</div>
-        <div class="player-title" id="player-title"></div>
-        <div id="active-buffs-bar" style="font-size:9px;color:var(--amber);font-family:'Share Tech Mono';margin-top:2px;min-height:13px;"></div>
-      </div>
-      <div class="rank-box">
-        <div class="rank-l" id="h-rl">E</div>
-        <div class="rank-lb">RANK</div>
-      </div>
-    </div>
-    <div class="lv-row">
-      <span class="lv-lb">LV</span>
-      <span class="lv-n" id="h-lv">4</span>
-      <span class="lv-ti" id="h-ti">Weakest Hunter</span>
-    </div>
-    <div class="day-prog">
-      <span class="day-pct" id="day-pct">0%</span>
-      <div class="day-bar"><div class="day-bar-f" id="day-bar-f" style="width:0%"></div></div>
-      <span class="day-txt" id="day-txt">0/4 main</span>
-    </div>
-    <div class="xp-meta"><span>EXPERIENCE</span><span id="h-xpt">15 / 100 XP</span></div>
-    <div class="xp-track"><div class="xp-fill" id="h-xpb" style="width:15%"></div></div>
+  <div class="xp-meta"><span>EXPERIENCE</span><span id="h-xpt">15 / 100 XP</span></div>
+  <div class="xp-track"><div class="xp-fill" id="h-xpb" style="width:15%"></div></div>
   </div>
 
   <div class="mst">
@@ -2130,7 +2134,7 @@ function render(){
 
 // ─── Swipe Gestures ───────────────────────────────────────────────────────────
 (function(){
-  const tabs=['quests','stats','streaks','ranks','history','shop','inventory'];
+  const tabs=['quests','stats','streaks','ranks','history','shop','inventory');
   let startX=0,startY=0,startScrollTop=0;
   const content=document.getElementById('content');
   content.addEventListener('touchstart',e=>{
