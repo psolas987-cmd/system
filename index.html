@@ -15,12 +15,15 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-
-const firebaseConfig = JSON.parse(process.env.FIREBASE_CONFIG);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const provider = new GoogleAuthProvider();
+const firebaseConfig = {
+  apiKey: "AIzaSyDYAhWt8wk_V_gOCntQnGx9sEeqMe4CJdQ",
+  authDomain: "system-arise-81cff.firebaseapp.com",
+  projectId: "system-arise-81cff",
+  storageBucket: "system-arise-81cff.firebasestorage.app",
+  messagingSenderId: "749373147838",
+  appId: "1:749373147838:web:4601e52c3613b2a96cacef",
+  measurementId: "G-7HRRQRBWB1"
+};
 
 const FirebaseService = {
   currentUser: null,
