@@ -13,8 +13,9 @@
 <!-- Removed sensitive Firebase configuration from client-side code -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithRedirect, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
 const firebaseConfig = {
   apiKey: "AIzaSyDYAhWt8wk_V_gOCntQnGx9sEeqMe4CJdQ",
   authDomain: "system-arise-81cff.firebaseapp.com",
@@ -25,69 +26,44 @@ const firebaseConfig = {
   measurementId: "G-7HRRQRBWB1"
 };
 
+// Αρχικοποίηση Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
+
 const FirebaseService = {
   currentUser: null,
   unsub: null,
-  _ignoreNextSnapshot: false,
 
   async signIn() {
-   window.login = () => {
-  const provider = new GoogleAuthProvider();
-  // Χρησιμοποιούμε Redirect αντί για Popup για να μην κολλάει
-  signInWithRedirect(auth, provider);
-};
-
-  async signOut() {
-    if (this.unsub) {
-      this.unsub();
-      this.unsub = null;
-    }
-    await signOut(auth);
-    this.currentUser = null;
-  },
-
-  async saveState(state) {
-    if (!this.currentUser) return;
     try {
-      this._ignoreNextSnapshot = true;
-      await setDoc(doc(db, 'hunters', this.currentUser.uid), {
-        state: JSON.stringify(state),
-        updatedAt: serverTimestamp(),
-      });
+      // Αλλαγή σε Redirect για να μην το μπλοκάρει το GitHub
+      await signInWithRedirect(auth, provider);
     } catch (e) {
-      console.warn('FB save error', e);
+      console.error('Login failed:', e.message);
     }
   },
 
   initAuthListener() {
+    // Έλεγχος αν γυρίσαμε από το Redirect της Google
+    getRedirectResult(auth).catch(console.error);
+
     onAuthStateChanged(auth, async (user) => {
       this.currentUser = user;
-      if (this.unsub) {
-        this.unsub();
-        this.unsub = null;
-      }
       if (user) {
-        this.unsub = onSnapshot(doc(db, 'hunters', user.uid), (snap) => {
-          if (this._ignoreNextSnapshot) {
-            this._ignoreNextSnapshot = false;
-            return;
-          }
-          if (snap.exists()) {
-            try {
-              const remote = JSON.parse(snap.data().state);
-              Object.assign(window.S, remote);
-            } catch (e) {
-              console.error('Error syncing data:', e);
-            }
-          }
-        });
+        console.log("Logged in as:", user.displayName);
+        // Εδώ μπαίνει ο κώδικας για το Snapshot που ήδη έχεις
       }
     });
-  },
+  }
 };
 
 FirebaseService.initAuthListener();
+// Σύνδεση με το κουμπί σου
+window.login = () => FirebaseService.signIn();
 </script>
+  
 <style>
 :root{
   --void:#04040d;--panel:#090918;--panel2:#0d0d24;
