@@ -13,7 +13,7 @@
 <!-- Removed sensitive Firebase configuration from client-side code -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 const firebaseConfig = {
   apiKey: "AIzaSyDYAhWt8wk_V_gOCntQnGx9sEeqMe4CJdQ",
@@ -31,12 +31,11 @@ const FirebaseService = {
   _ignoreNextSnapshot: false,
 
   async signIn() {
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (e) {
-      console.error('Login failed:', e.message);
-    }
-  },
+   window.login = () => {
+  const provider = new GoogleAuthProvider();
+  // Χρησιμοποιούμε Redirect αντί για Popup για να μην κολλάει
+  signInWithRedirect(auth, provider);
+};
 
   async signOut() {
     if (this.unsub) {
